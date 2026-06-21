@@ -22,6 +22,7 @@ import {
 } from "../common/Dialog";
 import { FAQDialog } from "./FAQDialog";
 import { normalizeLolmixPort } from "../../api/lolmix-api";
+import { LolmixConnectionStatusPanel } from "../lolmix/LolmixConnectionPanel";
 
 export default function SettingsDialog() {
     const { isDesktop } = useMedia();
@@ -240,6 +241,7 @@ export default function SettingsDialog() {
                             }
                         />
                     </label>
+                    <LolmixConnectionStatusPanel />
                 </div>
             </div>
 

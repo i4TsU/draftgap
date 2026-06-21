@@ -1,6 +1,11 @@
 import { Icon } from "solid-heroicons";
 import { ellipsisVertical } from "solid-heroicons/outline";
-import { presentationChartLine, trash, user } from "solid-heroicons/solid-mini";
+import {
+    presentationChartLine,
+    trash,
+    user,
+    wrenchScrewdriver,
+} from "solid-heroicons/solid-mini";
 import { useDraft } from "../../contexts/DraftContext";
 import { Team } from "@draftgap/core/src/models/Team";
 import { ROLES, Role } from "@draftgap/core/src/models/Role";
@@ -8,6 +13,8 @@ import { linkByStatsSite } from "../../utils/sites";
 import { useUser } from "../../contexts/UserContext";
 import { useDraftAnalysis } from "../../contexts/DraftAnalysisContext";
 import { useDataset } from "../../contexts/DatasetContext";
+import { useBuild } from "../../contexts/BuildContext";
+import { useDraftView } from "../../contexts/DraftViewContext";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -29,6 +36,8 @@ export function PickOptions(props: { team: Team; index: number }) {
     const { config } = useUser();
     const { dataset } = useDataset();
     const { pickChampion, allyTeam, opponentTeam } = useDraft();
+    const { setBuildPick } = useBuild();
+    const { setCurrentDraftView } = useDraftView();
 
     const { allyTeamComp, opponentTeamComp, setAnalysisPick, analyzeHovers } =
         useDraftAnalysis();
@@ -48,6 +57,15 @@ export function PickOptions(props: { team: Team; index: number }) {
         }
 
         return undefined;
+    };
+
+    const lockedChampionKey = () => teamPicks()[props.index].championKey;
+
+    const openBuilds = () => {
+        if (!lockedChampionKey()) return;
+
+        setBuildPick({ team: props.team, index: props.index });
+        setCurrentDraftView({ type: "builds" });
     };
 
     return (
@@ -109,6 +127,14 @@ export function PickOptions(props: { team: Team; index: number }) {
                                 <span>{config.defaultStatsSite}</span>
                                 <DropdownMenuShortcut>B</DropdownMenuShortcut>
                             </a>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            disabled={!lockedChampionKey()}
+                            onSelect={openBuilds}
+                        >
+                            <DropdownMenuIcon path={wrenchScrewdriver} />
+                            <span>Builds</span>
+                            <DropdownMenuShortcut>B</DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem
                             disabled={!champion()}

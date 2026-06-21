@@ -76,10 +76,7 @@ export function createLolmixContext() {
             ],
             queryFn: () => checkLolmixConnection(currentConfig),
             get enabled() {
-                return (
-                    currentConfig.host.length > 0 &&
-                    currentDraftView().type === "builds"
-                );
+                return currentConfig.host.length > 0;
             },
             refetchInterval: false,
             refetchOnMount: true,

@@ -12,21 +12,21 @@ export const BuildView: Component = () => {
     const { query, buildAnalysisResult } = useBuild();
 
     return (
-        <>
+        <div class="flex flex-col gap-20">
+            <LolmixRecommendationsPanel />
             <Switch>
                 <Match when={query.isLoading}>
-                    <div class="text-neutral-50 text-2xl text-center grid place-items-center h-full">
+                    <div class="text-neutral-50 text-2xl text-center py-12">
                         Loading...
                     </div>
                 </Match>
                 <Match when={query.isError}>
-                    <div class="text-red-500 text-2xl text-center grid place-items-center h-full">
+                    <div class="text-red-500 text-2xl text-center py-12">
                         Error while fetching build data
                     </div>
                 </Match>
                 <Match when={query.isSuccess && buildAnalysisResult}>
                     <div class="flex flex-col gap-20">
-                        <LolmixRecommendationsPanel />
                         <div class="flex flex-col gap-8">
                             <h2 class="uppercase text-2xl font-semibold leading-none text-center">
                                 Pre-game
@@ -48,6 +48,6 @@ export const BuildView: Component = () => {
                     </div>
                 </Match>
             </Switch>
-        </>
+        </div>
     );
 };

@@ -121,14 +121,10 @@ const App: Component = () => {
                                             label: "Draft Analysis",
                                             value: "analysis",
                                         },
-                                        ...(config.enableBetaFeatures
-                                            ? ([
-                                                  {
-                                                      label: "Builds",
-                                                      value: "builds",
-                                                  },
-                                              ] as const)
-                                            : []),
+                                        {
+                                            label: "Builds",
+                                            value: "builds",
+                                        },
                                     ] as const
                                 }
                                 selected={currentDraftView().type}
