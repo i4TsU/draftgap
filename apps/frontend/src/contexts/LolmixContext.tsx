@@ -2,12 +2,16 @@ import { createQuery } from "@tanstack/solid-query";
 import { JSXElement, createContext, createMemo, useContext } from "solid-js";
 import type {
     LolmixClientResult,
+    LolmixConnectionState,
     LolmixDraftRequestResult,
 } from "../api/lolmix-api";
 import {
     buildLolmixAnalyzeRequest,
+    checkLolmixConnection,
     fetchLolmixRecommendations,
     lolmixAnalyzeEndpoint,
+    lolmixServerConfig,
+    notConfiguredLolmixConnectionState,
 } from "../api/lolmix-api";
 import { useBuild } from "./BuildContext";
 import { useDataset } from "./DatasetContext";
@@ -17,6 +21,10 @@ import { useDraftView } from "./DraftViewContext";
 import { useUser } from "./UserContext";
 
 export type LolmixRecommendationsState =
+    | {
+          status: "not-configured";
+          request: Extract<LolmixDraftRequestResult, { ok: true }>;
+      }
     | {
           status: "invalid-draft";
           request: Extract<LolmixDraftRequestResult, { ok: false }>;
@@ -41,7 +49,11 @@ export function createLolmixContext() {
     const { buildPick } = useBuild();
     const { currentDraftView } = useDraftView();
 
-    const endpoint = () => lolmixAnalyzeEndpoint(config.lolmixServerPort);
+    const serverConfig = createMemo(() =>
+        lolmixServerConfig(config.lolmixServerHost, config.lolmixServerPort),
+    );
+    const endpoint = () =>
+        lolmixAnalyzeEndpoint(serverConfig().host, serverConfig().port);
     const request = createMemo(() =>
         buildLolmixAnalyzeRequest({
             buildPick: buildPick(),
@@ -53,12 +65,66 @@ export function createLolmixContext() {
         }),
     );
 
+    const connectionQuery = createQuery(() => {
+        const currentConfig = serverConfig();
+
+        return {
+            queryKey: [
+                "lolmix-connection",
+                currentConfig.host,
+                currentConfig.port,
+            ],
+            queryFn: () => checkLolmixConnection(currentConfig),
+            get enabled() {
+                return (
+                    currentConfig.host.length > 0 &&
+                    currentDraftView().type === "builds"
+                );
+            },
+            refetchInterval: false,
+            refetchOnMount: true,
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
+            retry: false,
+        };
+    });
+
+    const connectionState = createMemo<LolmixConnectionState>(() => {
+        const currentConfig = serverConfig();
+        if (!currentConfig.host) {
+            return notConfiguredLolmixConnectionState(
+                currentConfig.host,
+                currentConfig.port,
+            );
+        }
+
+        if (
+            connectionQuery.isLoading ||
+            (connectionQuery.isFetching && !connectionQuery.data)
+        ) {
+            return {
+                status: "checking",
+                host: currentConfig.host,
+                port: currentConfig.port,
+            };
+        }
+
+        return (
+            connectionQuery.data ?? {
+                status: "checking",
+                host: currentConfig.host,
+                port: currentConfig.port,
+            }
+        );
+    });
+
     const query = createQuery(() => {
         const currentRequest = request();
+        const currentEndpoint = endpoint();
         return {
             queryKey: [
                 "lolmix",
-                endpoint(),
+                currentEndpoint,
                 currentRequest.ok ? currentRequest.payload : currentRequest,
             ],
             queryFn: async () => {
@@ -68,15 +134,24 @@ export function createLolmixContext() {
                         message: currentRequest.message,
                     } satisfies LolmixClientResult;
                 }
+                if (!currentEndpoint) {
+                    return {
+                        status: "unexpected-error",
+                        message: "Configure a lolmix-server host first.",
+                    } satisfies LolmixClientResult;
+                }
 
                 return fetchLolmixRecommendations(
-                    endpoint(),
+                    currentEndpoint,
                     currentRequest.payload,
                 );
             },
             get enabled() {
                 return (
-                    currentRequest.ok && currentDraftView().type === "builds"
+                    currentRequest.ok &&
+                    currentEndpoint !== undefined &&
+                    connectionState().status === "connected" &&
+                    currentDraftView().type === "builds"
                 );
             },
             refetchInterval: false,
@@ -92,6 +167,13 @@ export function createLolmixContext() {
         if (!currentRequest.ok) {
             return {
                 status: "invalid-draft",
+                request: currentRequest,
+            };
+        }
+
+        if (!endpoint()) {
+            return {
+                status: "not-configured",
                 request: currentRequest,
             };
         }
@@ -118,10 +200,14 @@ export function createLolmixContext() {
 
     return {
         endpoint,
+        connectionQuery,
+        connectionState,
         query,
         request,
         state,
-        port: () => config.lolmixServerPort,
+        retryConnection: () => connectionQuery.refetch(),
+        host: () => serverConfig().host,
+        port: () => serverConfig().port,
     };
 }
 

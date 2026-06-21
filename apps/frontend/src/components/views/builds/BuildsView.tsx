@@ -8,6 +8,7 @@ import { useBuild } from "../../../contexts/BuildContext";
 import { useDataset } from "../../../contexts/DatasetContext";
 import { Dialog } from "../../common/Dialog";
 import { BuildAnalysisDialog } from "../../dialogs/BuildAnalysisDialog";
+import { LolmixConnectionStatusPanel } from "../../lolmix/LolmixConnectionPanel";
 
 export const BuildsViewTabs = (props: { team: Team }) => {
     const { allyTeam, opponentTeam } = useDraft();
@@ -53,6 +54,9 @@ export const BuildsView = () => {
                 <BuildsViewTabs team="opponent" />
             </div>
             <div class="py-5 px-4 xl:px-8 h-full overflow-y-auto">
+                <div class="mb-6">
+                    <LolmixConnectionStatusPanel />
+                </div>
                 <Show
                     when={buildPick()}
                     fallback={

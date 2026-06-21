@@ -1,15 +1,12 @@
 import { Component, For, Match, Show, Switch } from "solid-js";
 import type {
     LolmixAnalyzeResponse,
+    LolmixConnectionState,
     LolmixRecommendationEntry,
     LolmixRecommendationSection,
 } from "../../api/lolmix-api";
-import type {
-    LolmixRecommendationsState,
-} from "../../contexts/LolmixContext";
-import {
-    useLolmix,
-} from "../../contexts/LolmixContext";
+import type { LolmixRecommendationsState } from "../../contexts/LolmixContext";
+import { useLolmix } from "../../contexts/LolmixContext";
 import { Panel, PanelHeader } from "../common/Panel";
 import {
     formatLolmixCount,
@@ -26,16 +23,20 @@ import {
 
 type Props = {
     state: LolmixRecommendationsState;
+    connectionStatus: LolmixConnectionState["status"];
+    host: string;
     port: number;
     onRefresh?: () => void;
 };
 
 export const LolmixRecommendationsPanel: Component = () => {
-    const { state, port, query } = useLolmix();
+    const { connectionState, host, port, query, state } = useLolmix();
 
     return (
         <LolmixRecommendationsContent
             state={state()}
+            connectionStatus={connectionState().status}
+            host={host()}
             port={port()}
             onRefresh={() => query.refetch()}
         />
@@ -85,9 +86,25 @@ export const LolmixRecommendationsContent: Component<Props> = (props) => {
                         {invalidRequest()?.message}
                     </StatusMessage>
                 </Match>
+                <Match when={props.state.status === "not-configured"}>
+                    <StatusMessage tone="muted">
+                        Configure lolmix-server to request optional
+                        recommendations.
+                    </StatusMessage>
+                </Match>
                 <Match when={props.state.status === "idle"}>
                     <StatusMessage tone="muted">
-                        Lolmix recommendations are ready to request.
+                        <Switch>
+                            <Match
+                                when={props.connectionStatus === "connected"}
+                            >
+                                Lolmix recommendations are ready to request.
+                            </Match>
+                            <Match when={true}>
+                                Connect lolmix-server to request optional
+                                recommendations.
+                            </Match>
+                        </Switch>
                     </StatusMessage>
                 </Match>
                 <Match when={props.state.status === "loading"}>
@@ -97,7 +114,7 @@ export const LolmixRecommendationsContent: Component<Props> = (props) => {
                 </Match>
                 <Match when={props.state.status === "unavailable"}>
                     <StatusMessage tone="warning">
-                        {lolmixUnavailableSetupHint(props.port)}
+                        {lolmixUnavailableSetupHint(props.host, props.port)}
                     </StatusMessage>
                 </Match>
                 <Match when={props.state.status === "validation-error"}>
@@ -191,7 +208,9 @@ const Recommendations: Component<{ data: LolmixAnalyzeResponse }> = (props) => {
     );
 };
 
-const Section: Component<{ section: LolmixRecommendationSection }> = (props) => {
+const Section: Component<{ section: LolmixRecommendationSection }> = (
+    props,
+) => {
     const entries = () => visibleLolmixEntries(props.section);
 
     return (

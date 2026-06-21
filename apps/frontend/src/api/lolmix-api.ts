@@ -3,6 +3,7 @@ import { Role } from "@draftgap/core/src/models/Role";
 import type { Team } from "@draftgap/core/src/models/Team";
 
 export const LOLMIX_DEFAULT_PORT = 8765;
+export const LOLMIX_DEFAULT_HOST = "127.0.0.1";
 export const LOLMIX_DEFAULT_TIER = "emerald_plus";
 export const LOLMIX_DEFAULT_PATCH = "30";
 
@@ -120,6 +121,54 @@ export type LolmixFetch = (
     init?: RequestInit,
 ) => Promise<Response>;
 
+export type LolmixServerConfig = {
+    host: string;
+    port: number;
+};
+
+export type LolmixHealthResponse = {
+    status: "ok";
+    app: "lolmix";
+    schema_version: number;
+    version: string | null;
+};
+
+export type LolmixConnectionState =
+    | {
+          status: "not-configured";
+          host: string;
+          port: number;
+          message: string;
+      }
+    | {
+          status: "checking";
+          host: string;
+          port: number;
+      }
+    | {
+          status: "connected";
+          host: string;
+          port: number;
+          data: LolmixHealthResponse;
+      }
+    | {
+          status: "unavailable";
+          host: string;
+          port: number;
+          message: string;
+      }
+    | {
+          status: "error";
+          host: string;
+          port: number;
+          message: string;
+          httpStatus?: number;
+      };
+export type CheckedLolmixConnectionState = Exclude<
+    LolmixConnectionState,
+    { status: "checking" }
+>;
+
 type DraftPickLike = {
     championKey: string | undefined;
     role: Role | undefined;
@@ -183,8 +232,148 @@ export function normalizeLolmixPort(port: unknown) {
     return parsed;
 }
 
-export function lolmixAnalyzeEndpoint(port: unknown) {
-    return `http://127.0.0.1:${normalizeLolmixPort(port)}/analyze`;
+export function normalizeLolmixHost(host: unknown) {
+    const raw =
+        typeof host === "string" ? host.trim() : String(host ?? "").trim();
+    if (!raw) return "";
+
+    const candidate = raw.includes("://") ? raw : `http://${raw}`;
+    try {
+        const parsed = new URL(candidate);
+        return parsed.hostname || "";
+    } catch {
+        return raw
+            .replace(/^https?:\/\//i, "")
+            .split("/")[0]
+            .split(":")[0]
+            .trim();
+    }
+}
+
+export function lolmixServerConfig(
+    host: unknown,
+    port: unknown,
+): LolmixServerConfig {
+    return {
+        host: normalizeLolmixHost(host),
+        port: normalizeLolmixPort(port),
+    };
+}
+
+export function lolmixServerBaseUrl(host: unknown, port: unknown) {
+    const config = lolmixServerConfig(host, port);
+    if (!config.host) return;
+
+    return `http://${formatHostForUrl(config.host)}:${config.port}`;
+}
+
+export function lolmixHealthEndpoint(host: unknown, port: unknown) {
+    const baseUrl = lolmixServerBaseUrl(host, port);
+    return baseUrl ? `${baseUrl}/health` : undefined;
+}
+
+export function lolmixAnalyzeEndpoint(host: unknown, port: unknown) {
+    const baseUrl = lolmixServerBaseUrl(host, port);
+    return baseUrl ? `${baseUrl}/analyze` : undefined;
+}
+
+export function notConfiguredLolmixConnectionState(
+    host: unknown,
+    port: unknown,
+): Extract<LolmixConnectionState, { status: "not-configured" }> {
+    const config = lolmixServerConfig(host, port);
+
+    return {
+        status: "not-configured",
+        host: config.host,
+        port: config.port,
+        message:
+            "Configure a lolmix-server host before checking the connection.",
+    };
+}
+
+export async function checkLolmixConnection(
+    config: LolmixServerConfig,
+    fetcher: LolmixFetch = fetch,
+): Promise<CheckedLolmixConnectionState> {
+    const endpoint = lolmixHealthEndpoint(config.host, config.port);
+    if (!endpoint) {
+        return notConfiguredLolmixConnectionState(config.host, config.port);
+    }
+
+    let response: Response;
+    try {
+        response = await fetcher(endpoint, {
+            method: "GET",
+        });
+    } catch (error) {
+        return {
+            status: "unavailable",
+            host: config.host,
+            port: config.port,
+            message:
+                error instanceof Error
+                    ? error.message
+                    : "lolmix-server is not reachable.",
+        };
+    }
+
+    const body = await readJson(response);
+    if (!response.ok) {
+        return {
+            status: "error",
+            host: config.host,
+            port: config.port,
+            httpStatus: response.status,
+            message: parseServerError(body).message,
+        };
+    }
+
+    const health = parseLolmixHealthResponse(body);
+    if (!health) {
+        return {
+            status: "error",
+            host: config.host,
+            port: config.port,
+            message: "lolmix-server returned an unexpected health response.",
+        };
+    }
+
+    return {
+        status: "connected",
+        host: config.host,
+        port: config.port,
+        data: health,
+    };
+}
+
+export function createLolmixConnectionController(fetcher: LolmixFetch = fetch) {
+    let state: LolmixConnectionState = notConfiguredLolmixConnectionState(
+        "",
+        LOLMIX_DEFAULT_PORT,
+    );
+
+    return {
+        state: () => state,
+        check: async (config: LolmixServerConfig) => {
+            const normalized = lolmixServerConfig(config.host, config.port);
+            if (!normalized.host) {
+                state = notConfiguredLolmixConnectionState(
+                    normalized.host,
+                    normalized.port,
+                );
+                return state;
+            }
+
+            state = {
+                status: "checking",
+                host: normalized.host,
+                port: normalized.port,
+            };
+            state = await checkLolmixConnection(normalized, fetcher);
+            return state;
+        },
+    };
 }
 
 export function buildLolmixAnalyzeRequest(
@@ -236,7 +425,8 @@ export function buildLolmixAnalyzeRequest(
         };
     }
 
-    const selectedRole = roleForChampion(pick.championKey, myTeamComp) ?? pick.role;
+    const selectedRole =
+        roleForChampion(pick.championKey, myTeamComp) ?? pick.role;
     if (selectedRole === undefined) {
         return {
             ok: false,
@@ -249,8 +439,10 @@ export function buildLolmixAnalyzeRequest(
         .filter((enemy) => enemy.championKey !== undefined)
         .map((enemy) => {
             const role =
-                roleForChampion(enemy.championKey!, theirTeamComp) ?? enemy.role;
-            const enemyChampion = input.dataset!.championData[enemy.championKey!];
+                roleForChampion(enemy.championKey!, theirTeamComp) ??
+                enemy.role;
+            const enemyChampion =
+                input.dataset!.championData[enemy.championKey!];
 
             if (role === undefined || !enemyChampion) {
                 return undefined;
@@ -392,6 +584,36 @@ export function parseLolmixResponse(
     };
 }
 
+function parseLolmixHealthResponse(
+    payload: unknown,
+): LolmixHealthResponse | undefined {
+    const record = asRecord(payload);
+    if (
+        !record ||
+        record.status !== "ok" ||
+        record.app !== "lolmix" ||
+        typeof record.schema_version !== "number" ||
+        (record.version !== null && typeof record.version !== "string")
+    ) {
+        return;
+    }
+
+    return {
+        status: "ok",
+        app: "lolmix",
+        schema_version: record.schema_version,
+        version: record.version,
+    };
+}
+
+function formatHostForUrl(host: string) {
+    if (host.includes(":") && !host.startsWith("[") && !host.endsWith("]")) {
+        return `[${host}]`;
+    }
+
+    return host;
+}
+
 function roleForChampion(
     championKey: string,
     teamComp: ReadonlyMap<Role, string> | undefined,
@@ -419,8 +641,7 @@ function parseServerError(payload: unknown): LolmixServerError {
         if (!record || typeof record.message !== "string") continue;
 
         details.push({
-            field:
-                typeof record.field === "string" ? record.field : undefined,
+            field: typeof record.field === "string" ? record.field : undefined,
             message: record.message,
         });
     }
@@ -500,7 +721,7 @@ function parsePerMatchup(value: unknown) {
     return Object.fromEntries(
         Object.entries(record).map(([slot, matchup]) => [
             slot,
-            matchup === null ? null : parsePerMatchupEntry(matchup) ?? null,
+            matchup === null ? null : (parsePerMatchupEntry(matchup) ?? null),
         ]),
     );
 }
@@ -584,7 +805,9 @@ function asArray(value: unknown): unknown[] | undefined {
 }
 
 function isStringArray(value: unknown): value is string[] {
-    return Array.isArray(value) && value.every((item) => typeof item === "string");
+    return (
+        Array.isArray(value) && value.every((item) => typeof item === "string")
+    );
 }
 
 function isLolmixLane(value: unknown): value is LolmixLane {

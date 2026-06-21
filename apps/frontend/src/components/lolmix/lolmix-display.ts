@@ -80,8 +80,16 @@ export function lolmixWarningLines(data: LolmixAnalyzeResponse) {
     );
 }
 
-export function lolmixUnavailableSetupHint(port: number) {
-    return `lolmix-server is not reachable on port ${port}. Start it with uv run lolmix-server --port ${port}.`;
+export function lolmixUnavailableSetupHint(host: string, port: number) {
+    return `lolmix-server is not reachable at ${host}:${port}. Install or sync lolmix, run uv run lolmix-server --host ${host} --port ${port}, then confirm DraftGap is configured for the same host and port.`;
+}
+
+export function lolmixSetupSteps(host: string, port: number) {
+    return [
+        "Install or sync lolmix in its project environment.",
+        `Run uv run lolmix-server --host ${host} --port ${port}.`,
+        `Confirm DraftGap is configured for ${host}:${port}.`,
+    ];
 }
 
 function lolmixWinrateClass(value: number) {

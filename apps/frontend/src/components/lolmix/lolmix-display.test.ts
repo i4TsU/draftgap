@@ -6,6 +6,7 @@ import {
     formatLolmixSignedPercent,
     lolmixHeadlineMetric,
     lolmixSectionTitle,
+    lolmixSetupSteps,
     lolmixUnavailableSetupHint,
     lolmixWarningLines,
     visibleLolmixSections,
@@ -93,8 +94,11 @@ describe("lolmix display helpers", () => {
     });
 
     test("prepares the unavailable setup hint", () => {
-        expect(lolmixUnavailableSetupHint(8765)).toContain(
-            "uv run lolmix-server --port 8765",
+        expect(lolmixUnavailableSetupHint("127.0.0.1", 8765)).toContain(
+            "uv run lolmix-server --host 127.0.0.1 --port 8765",
+        );
+        expect(lolmixSetupSteps("127.0.0.1", 8765)).toContain(
+            "Install or sync lolmix in its project environment.",
         );
     });
 });

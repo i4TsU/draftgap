@@ -209,22 +209,37 @@ export default function SettingsDialog() {
 
             <div>
                 <h3 class="text-3xl uppercase">Lolmix</h3>
-                <div class="flex space-x-8 items-center justify-between mt-2">
-                    <span class="text-lg uppercase">Local server port</span>
-                    <input
-                        type="number"
-                        min={1}
-                        max={65535}
-                        value={config.lolmixServerPort}
-                        class="bg-[#141414] border border-neutral-700 rounded-md px-3 py-1 text-lg text-neutral-100 w-28 text-right"
-                        onInput={(event) =>
-                            setConfig({
-                                lolmixServerPort: normalizeLolmixPort(
-                                    event.currentTarget.value,
-                                ),
-                            })
-                        }
-                    />
+                <div class="flex flex-col gap-2 mt-2">
+                    <label class="flex space-x-8 items-center justify-between">
+                        <span class="text-lg uppercase">Local server host</span>
+                        <input
+                            type="text"
+                            value={config.lolmixServerHost}
+                            class="bg-[#141414] border border-neutral-700 rounded-md px-3 py-1 text-lg text-neutral-100 w-44 text-right"
+                            onInput={(event) =>
+                                setConfig({
+                                    lolmixServerHost: event.currentTarget.value,
+                                })
+                            }
+                        />
+                    </label>
+                    <label class="flex space-x-8 items-center justify-between">
+                        <span class="text-lg uppercase">Local server port</span>
+                        <input
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={config.lolmixServerPort}
+                            class="bg-[#141414] border border-neutral-700 rounded-md px-3 py-1 text-lg text-neutral-100 w-28 text-right"
+                            onInput={(event) =>
+                                setConfig({
+                                    lolmixServerPort: normalizeLolmixPort(
+                                        event.currentTarget.value,
+                                    ),
+                                })
+                            }
+                        />
+                    </label>
                 </div>
             </div>
 

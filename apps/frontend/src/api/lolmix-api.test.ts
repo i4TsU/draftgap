@@ -6,7 +6,12 @@ import { Role } from "@draftgap/core/src/models/Role";
 import {
     LOLMIX_RECOMMENDATION_SECTIONS,
     buildLolmixAnalyzeRequest,
+    checkLolmixConnection,
+    createLolmixConnectionController,
     fetchLolmixRecommendations,
+    lolmixAnalyzeEndpoint,
+    lolmixHealthEndpoint,
+    lolmixServerConfig,
     parseLolmixResponse,
     roleToLolmixLane,
 } from "./lolmix-api";
@@ -104,6 +109,20 @@ const minimalResponse = {
     ],
 };
 
+const healthResponse = () =>
+    new Response(
+        JSON.stringify({
+            status: "ok",
+            app: "lolmix",
+            schema_version: 1,
+            version: "0.1.0",
+        }),
+        {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+        },
+    );
+
 describe("roleToLolmixLane", () => {
     test("maps every DraftGap role to the lolmix lane name", () => {
         expect(roleToLolmixLane(Role.Top)).toBe("top");
@@ -194,7 +213,13 @@ describe("buildLolmixAnalyzeRequest", () => {
                 emptyPick,
                 emptyPick,
             ],
-            opponentTeam: [emptyPick, emptyPick, emptyPick, emptyPick, emptyPick],
+            opponentTeam: [
+                emptyPick,
+                emptyPick,
+                emptyPick,
+                emptyPick,
+                emptyPick,
+            ],
             allyTeamComp: new Map(),
             opponentTeamComp: new Map(),
             dataset,
@@ -219,9 +244,9 @@ describe("fetchLolmixRecommendations", () => {
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
                 use_cache: true,
             },
-            (async () => {
+            async () => {
                 throw new TypeError("Failed to fetch");
-            }),
+            },
         );
 
         expect(result.status).toBe("unavailable");
@@ -239,11 +264,11 @@ describe("fetchLolmixRecommendations", () => {
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
                 use_cache: true,
             },
-            (async () =>
+            async () =>
                 new Response(JSON.stringify(minimalResponse), {
                     status: 200,
                     headers: { "Content-Type": "application/json" },
-                })),
+                }),
         );
 
         expect(result.status).toBe("success");
@@ -265,7 +290,7 @@ describe("fetchLolmixRecommendations", () => {
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
                 use_cache: true,
             },
-            (async () =>
+            async () =>
                 new Response(
                     JSON.stringify({
                         error: {
@@ -283,12 +308,142 @@ describe("fetchLolmixRecommendations", () => {
                         status: 400,
                         headers: { "Content-Type": "application/json" },
                     },
-                )),
+                ),
         );
 
         expect(result.status).toBe("validation-error");
         if (result.status !== "validation-error") return;
         expect(result.error.details[0].field).toBe("my_lane");
+    });
+});
+
+describe("lolmix connection", () => {
+    test("builds health and analyze endpoints from configured host and port", () => {
+        expect(lolmixServerConfig(" http://localhost:9000 ", 9001)).toEqual({
+            host: "localhost",
+            port: 9001,
+        });
+        expect(lolmixHealthEndpoint("localhost", 9001)).toBe(
+            "http://localhost:9001/health",
+        );
+        expect(lolmixAnalyzeEndpoint("localhost", 9001)).toBe(
+            "http://localhost:9001/analyze",
+        );
+    });
+
+    test("transitions through checking before a successful connection", async () => {
+        let resolveResponse!: (response: Response) => void;
+        const pendingResponse = new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+        });
+        const controller = createLolmixConnectionController(
+            async () => pendingResponse,
+        );
+
+        const check = controller.check({
+            host: "127.0.0.1",
+            port: 8765,
+        });
+
+        expect(controller.state().status).toBe("checking");
+        resolveResponse(healthResponse());
+
+        const state = await check;
+        expect(state.status).toBe("connected");
+        expect(controller.state().status).toBe("connected");
+    });
+
+    test("returns unavailable when the server cannot be reached", async () => {
+        const state = await checkLolmixConnection(
+            {
+                host: "127.0.0.1",
+                port: 8765,
+            },
+            async () => {
+                throw new TypeError("Failed to fetch");
+            },
+        );
+
+        expect(state.status).toBe("unavailable");
+        if (state.status !== "unavailable") return;
+        expect(state.message).toContain("Failed to fetch");
+    });
+
+    test("returns error for an unexpected health response", async () => {
+        const state = await checkLolmixConnection(
+            {
+                host: "127.0.0.1",
+                port: 8765,
+            },
+            async () =>
+                new Response(JSON.stringify({ status: "ok" }), {
+                    status: 200,
+                    headers: { "Content-Type": "application/json" },
+                }),
+        );
+
+        expect(state.status).toBe("error");
+    });
+
+    test("retry can move from unavailable to connected", async () => {
+        let calls = 0;
+        const controller = createLolmixConnectionController(async () => {
+            calls += 1;
+            if (calls === 1) {
+                throw new TypeError("Failed to fetch");
+            }
+            return healthResponse();
+        });
+
+        expect(
+            (
+                await controller.check({
+                    host: "127.0.0.1",
+                    port: 8765,
+                })
+            ).status,
+        ).toBe("unavailable");
+        expect(
+            (
+                await controller.check({
+                    host: "127.0.0.1",
+                    port: 8765,
+                })
+            ).status,
+        ).toBe("connected");
+        expect(calls).toBe(2);
+    });
+
+    test("configuration changes are reflected in connection checks", async () => {
+        const calledUrls: string[] = [];
+        const controller = createLolmixConnectionController(async (input) => {
+            calledUrls.push(String(input));
+            return healthResponse();
+        });
+
+        await controller.check({
+            host: "127.0.0.1",
+            port: 8765,
+        });
+        await controller.check({
+            host: "localhost",
+            port: 9001,
+        });
+
+        expect(calledUrls).toEqual([
+            "http://127.0.0.1:8765/health",
+            "http://localhost:9001/health",
+        ]);
+    });
+
+    test("does not perform a connection action until explicitly checked", () => {
+        let calls = 0;
+        createLolmixConnectionController(async () => {
+            calls += 1;
+            return healthResponse();
+        });
+
+        expect(calls).toBe(0);
     });
 });
 
