@@ -21,6 +21,7 @@ import {
     DialogTrigger,
 } from "../common/Dialog";
 import { FAQDialog } from "./FAQDialog";
+import { normalizeLolmixPort } from "../../api/lolmix-api";
 
 export default function SettingsDialog() {
     const { isDesktop } = useMedia();
@@ -205,6 +206,27 @@ export default function SettingsDialog() {
                     </div>
                 </div>
             </Show>
+
+            <div>
+                <h3 class="text-3xl uppercase">Lolmix</h3>
+                <div class="flex space-x-8 items-center justify-between mt-2">
+                    <span class="text-lg uppercase">Local server port</span>
+                    <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={config.lolmixServerPort}
+                        class="bg-[#141414] border border-neutral-700 rounded-md px-3 py-1 text-lg text-neutral-100 w-28 text-right"
+                        onInput={(event) =>
+                            setConfig({
+                                lolmixServerPort: normalizeLolmixPort(
+                                    event.currentTarget.value,
+                                ),
+                            })
+                        }
+                    />
+                </div>
+            </div>
 
             <div>
                 <h3 class="text-3xl uppercase">Misc</h3>

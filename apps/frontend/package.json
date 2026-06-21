@@ -7,6 +7,7 @@
         "dev": "bunx --bun vite",
         "build": "bunx --bun vite build",
         "serve": "bunx --bun vite preview",
+        "test": "bun test",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
         "update-data": "bun run scripts/update-data.ts",

@@ -8,6 +8,7 @@ import {
 import { createStore } from "solid-js/store";
 import { Role } from "@draftgap/core/src/models/Role";
 import { DraftGapConfig } from "@draftgap/core/src/models/user/Config";
+import { LOLMIX_DEFAULT_PORT } from "../api/lolmix-api";
 
 type FavouritePick = `${string}:${Role}`;
 
@@ -30,6 +31,9 @@ const DEFAULT_CONFIG: DraftGapConfig = {
 
     // LOL CLIENT
     disableLeagueClientIntegration: false,
+
+    // LOLMIX
+    lolmixServerPort: LOLMIX_DEFAULT_PORT,
 };
 
 const FAVOURITE_PICKS_KEY = "draftgap-favourite-picks";

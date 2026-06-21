@@ -18,6 +18,7 @@ import { DraftAnalysisProvider } from "./contexts/DraftAnalysisContext";
 import { DatasetProvider } from "./contexts/DatasetContext";
 import { DraftFiltersProvider } from "./contexts/DraftFiltersContext";
 import { ExtraDraftAnalysisProvider } from "./contexts/ExtraDraftAnalysisContext";
+import { LolmixProvider } from "./contexts/LolmixContext";
 
 setupMobileVH();
 setupAnalytics();
@@ -37,16 +38,18 @@ render(
                                         <ExtraDraftAnalysisProvider>
                                             <DraftSuggestionsProvider>
                                                 <BuildProvider>
-                                                    <LolClientProvider>
-                                                        <App />
-                                                        <Toaster
-                                                            position="bottom-right"
-                                                            toastOptions={{
-                                                                duration:
-                                                                    Infinity,
-                                                            }}
-                                                        />
-                                                    </LolClientProvider>
+                                                    <LolmixProvider>
+                                                        <LolClientProvider>
+                                                            <App />
+                                                            <Toaster
+                                                                position="bottom-right"
+                                                                toastOptions={{
+                                                                    duration:
+                                                                        Infinity,
+                                                                }}
+                                                            />
+                                                        </LolClientProvider>
+                                                    </LolmixProvider>
                                                 </BuildProvider>
                                             </DraftSuggestionsProvider>
                                         </ExtraDraftAnalysisProvider>

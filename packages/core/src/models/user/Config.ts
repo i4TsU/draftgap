@@ -29,4 +29,7 @@ export type DraftGapConfig = {
 
     // LOL CLIENT
     disableLeagueClientIntegration: boolean;
+
+    // LOLMIX
+    lolmixServerPort: number;
 };

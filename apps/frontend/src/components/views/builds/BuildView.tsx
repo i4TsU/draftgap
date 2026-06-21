@@ -6,6 +6,7 @@ import { ItemStats } from "./ItemStats";
 import { StarterItemStats } from "./StarterItemStats";
 import { SummonerSpellsStats } from "./SummonerSpellsStats";
 import { SkillStats } from "./SkillStats";
+import { LolmixRecommendationsPanel } from "../../lolmix/LolmixRecommendationsPanel";
 
 export const BuildView: Component = () => {
     const { query, buildAnalysisResult } = useBuild();
@@ -25,6 +26,7 @@ export const BuildView: Component = () => {
                 </Match>
                 <Match when={query.isSuccess && buildAnalysisResult}>
                     <div class="flex flex-col gap-20">
+                        <LolmixRecommendationsPanel />
                         <div class="flex flex-col gap-8">
                             <h2 class="uppercase text-2xl font-semibold leading-none text-center">
                                 Pre-game
