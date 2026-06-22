@@ -6,17 +6,21 @@ export const LOLMIX_DEFAULT_PORT = 8765;
 export const LOLMIX_DEFAULT_HOST = "127.0.0.1";
 export const LOLMIX_DEFAULT_TIER = "emerald_plus";
 export const LOLMIX_DEFAULT_PATCH = "30";
+export const LOLMIX_DEFAULT_TOP_N = 8;
 
 export const LOLMIX_RECOMMENDATION_SECTIONS = [
     "summoners",
+    "rune_page",
     "skill_early",
     "starters",
-    "boots",
     "first_completed_item",
+    "boots",
     "second_item",
+    "third_item",
+    "fourth_item",
     "winning_items",
-    "keystones",
-    "rune_page",
+    "skill_order",
+    "full_build",
 ] as const;
 
 export type LolmixLane = "top" | "jungle" | "middle" | "bottom" | "support";
@@ -33,6 +37,7 @@ export type LolmixAnalyzeRequest = {
     enemies: LolmixEnemyRequest[];
     tier: string;
     patch: string;
+    top_n: number;
     sections: LolmixSectionName[];
     use_cache: boolean;
 };
@@ -463,6 +468,7 @@ export function buildLolmixAnalyzeRequest(
             enemies,
             tier: input.tier ?? LOLMIX_DEFAULT_TIER,
             patch: input.patch ?? LOLMIX_DEFAULT_PATCH,
+            top_n: LOLMIX_DEFAULT_TOP_N,
             sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
             use_cache: true,
         },

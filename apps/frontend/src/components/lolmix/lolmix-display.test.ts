@@ -6,11 +6,31 @@ import {
     formatLolmixSignedPercent,
     lolmixHeadlineMetric,
     lolmixSectionTitle,
+    lolmixSkillEarlyKey,
     lolmixSetupSteps,
     lolmixUnavailableSetupHint,
     lolmixWarningLines,
+    parseLolmixRunePageKey,
+    visibleLolmixEntries,
     visibleLolmixSections,
 } from "./lolmix-display";
+
+const entry = (id: number, section: string) => ({
+    id,
+    name: `${section} ${id}`,
+    section,
+    score: 0.01,
+    overall_wr: 0.512,
+    overall_pr: 0.42,
+    overall_delta: 0.012,
+    overall_n: 1200,
+    combined_wr: 0.527,
+    combined_pr: 0.433,
+    min_delta: -0.02,
+    max_delta: 0.04,
+    total_n_max: 1600,
+    per_matchup: {},
+});
 
 const response: LolmixAnalyzeResponse = {
     schema_version: 1,
@@ -77,6 +97,42 @@ describe("lolmix display helpers", () => {
         expect(formatLolmixSignedPercent(entry.score)).toBe("+3.4%");
     });
 
+    test("hides rune backing sections and preserves server-side cutoffs", () => {
+        const sections = visibleLolmixSections({
+            ...response,
+            sections: [
+                { name: "rune_page", entries: [entry(1, "rune_page")] },
+                { name: "keystones", entries: [entry(2, "keystones")] },
+                { name: "runes_primary", entries: [entry(3, "runes_primary")] },
+                {
+                    name: "runes_secondary",
+                    entries: [entry(4, "runes_secondary")],
+                },
+                { name: "stat_shards", entries: [entry(5, "stat_shards")] },
+                {
+                    name: "boots",
+                    entries: Array.from({ length: 8 }, (_, index) =>
+                        entry(index + 10, "boots"),
+                    ),
+                },
+                {
+                    name: "winning_items",
+                    entries: Array.from({ length: 12 }, (_, index) =>
+                        entry(index + 20, "winning_items"),
+                    ),
+                },
+            ],
+        });
+
+        expect(sections.map((section) => section.name)).toEqual([
+            "rune_page",
+            "boots",
+            "winning_items",
+        ]);
+        expect(visibleLolmixEntries(sections[1])).toHaveLength(8);
+        expect(visibleLolmixEntries(sections[2])).toHaveLength(12);
+    });
+
     test("uses combined WR as the winning_items headline", () => {
         const headline = lolmixHeadlineMetric("winning_items", {
             ...response.sections[0].entries[0],
@@ -85,6 +141,28 @@ describe("lolmix display helpers", () => {
 
         expect(headline.label).toBe("Combined WR");
         expect(headline.value).toBe("54.1%");
+    });
+
+    test("parses skill cells and structured rune page keys", () => {
+        expect(
+            lolmixSkillEarlyKey({
+                ...response.sections[0].entries[0],
+                name: "L3 W",
+            }),
+        ).toEqual({ level: 3, slot: "W" });
+
+        expect(
+            parseLolmixRunePageKey(
+                "rune_page:v2;kind=pick;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            ),
+        ).toEqual({
+            kind: "pick",
+            primaryPath: 1,
+            secondaryPath: 0,
+            primary: [8112, 8139, 8140, 8106],
+            secondary: [9105, 8017],
+            shards: [5008, 5008, 5001],
+        });
     });
 
     test("prepares warning text for display", () => {

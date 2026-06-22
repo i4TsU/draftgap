@@ -4,6 +4,7 @@ import type { Dataset } from "@draftgap/core/src/models/dataset/Dataset";
 import type { ChampionData } from "@draftgap/core/src/models/dataset/ChampionData";
 import { Role } from "@draftgap/core/src/models/Role";
 import {
+    LOLMIX_DEFAULT_TOP_N,
     LOLMIX_RECOMMENDATION_SECTIONS,
     buildLolmixAnalyzeRequest,
     checkLolmixConnection,
@@ -171,9 +172,31 @@ describe("buildLolmixAnalyzeRequest", () => {
             ],
             tier: "emerald_plus",
             patch: "30",
+            top_n: LOLMIX_DEFAULT_TOP_N,
             sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
             use_cache: true,
         });
+    });
+
+    test("requests the lolmix GUI-visible recommendation sections", () => {
+        expect([...LOLMIX_RECOMMENDATION_SECTIONS]).toEqual([
+            "summoners",
+            "rune_page",
+            "skill_early",
+            "starters",
+            "first_completed_item",
+            "boots",
+            "second_item",
+            "third_item",
+            "fourth_item",
+            "winning_items",
+            "skill_order",
+            "full_build",
+        ]);
+        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("keystones");
+        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("runes_primary");
+        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("runes_secondary");
+        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("stat_shards");
     });
 
     test("does not send hover-only opponent champions", () => {
@@ -241,6 +264,7 @@ describe("fetchLolmixRecommendations", () => {
                 enemies: [],
                 tier: "emerald_plus",
                 patch: "30",
+                top_n: LOLMIX_DEFAULT_TOP_N,
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
                 use_cache: true,
             },
@@ -261,6 +285,7 @@ describe("fetchLolmixRecommendations", () => {
                 enemies: [{ champion_id: 122, lane: "top" }],
                 tier: "emerald_plus",
                 patch: "30",
+                top_n: LOLMIX_DEFAULT_TOP_N,
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
                 use_cache: true,
             },
@@ -287,6 +312,7 @@ describe("fetchLolmixRecommendations", () => {
                 enemies: [],
                 tier: "emerald_plus",
                 patch: "30",
+                top_n: LOLMIX_DEFAULT_TOP_N,
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
                 use_cache: true,
             },
