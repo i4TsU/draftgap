@@ -3,7 +3,7 @@
     windows_subsystem = "windows"
 )]
 #[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
+use std::path::PathBuf;
 
 use reqwest::Client;
 use serde::Serialize;
@@ -22,33 +22,93 @@ struct LcuData {
     username: String,
 }
 
+#[cfg(target_os = "windows")]
+fn parse_lcu_lockfile(content: &str) -> Result<LcuData, String> {
+    let parts: Vec<&str> = content.trim().split(':').collect();
+    if parts.len() != 5 {
+        return Err(format!("Expected 5 lockfile fields, found {}", parts.len()));
+    }
+
+    if parts[0] != "LeagueClient" {
+        return Err(format!("Unexpected lockfile process name: {}", parts[0]));
+    }
+
+    let _pid: u32 = parts[1]
+        .parse()
+        .map_err(|_| "Could not parse League Client process id".to_owned())?;
+
+    let port: u16 = parts[2]
+        .parse()
+        .map_err(|_| "Could not parse LCU port".to_owned())?;
+
+    if parts[3].is_empty() {
+        return Err("LCU password is empty".to_owned());
+    }
+
+    if parts[4] != "https" {
+        return Err(format!("Unsupported LCU protocol: {}", parts[4]));
+    }
+
+    Ok(LcuData {
+        port,
+        password: parts[3].to_owned(),
+        username: "riot".to_owned(),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn league_lockfile_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Ok(path) = std::env::var("DRAFTGAP_LEAGUE_LOCKFILE") {
+        paths.push(PathBuf::from(path));
+    }
+
+    if let Ok(path) = std::env::var("DRAFTGAP_LEAGUE_DIR") {
+        paths.push(PathBuf::from(path).join("lockfile"));
+    }
+
+    paths.push(PathBuf::from(r"C:\Riot Games\League of Legends\lockfile"));
+
+    if let Ok(path) = std::env::var("ProgramFiles") {
+        paths.push(PathBuf::from(path).join(r"Riot Games\League of Legends\lockfile"));
+    }
+
+    if let Ok(path) = std::env::var("ProgramFiles(x86)") {
+        paths.push(PathBuf::from(path).join(r"Riot Games\League of Legends\lockfile"));
+    }
+
+    paths.dedup();
+    paths
+}
+
+#[cfg(target_os = "windows")]
 fn get_league_lcu_data() -> Result<LcuData, String> {
-    #[cfg(not(target_os = "windows"))]
+    let mut errors = Vec::new();
+
+    for path in league_lockfile_paths() {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                return parse_lcu_lockfile(&content)
+                    .map_err(|e| format!("Could not parse {}: {e}", path.display()));
+            }
+            Err(e) => errors.push(format!("{} ({e})", path.display())),
+        }
+    }
+
+    Err(format!(
+        "Could not read League lockfile from known paths: {}",
+        errors.join(", ")
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_league_lcu_data() -> Result<LcuData, String> {
     let output = std::process::Command::new("sh")
         .arg("-lc")
         .arg("ps axww -o args | grep -F 'LeagueClientUx ' | grep -v grep | head -n 1")
         .output()
         .map_err(|_| "Could not run command")?;
-
-    #[cfg(target_os = "windows")]
-    let output = {
-        match std::process::Command::new("powershell")
-            .arg("/C")
-            .arg("Get-CimInstance -Query \"SELECT * from Win32_Process WHERE name LIKE 'LeagueClientUx.exe'\" | Select-Object -ExpandProperty CommandLine")
-            .creation_flags(0x08000000) // CREATE_NO_WINDOW
-            .output()
-        {
-            Ok(output) => Ok(output),
-            Err(_) => {
-                std::process::Command::new("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell")
-                    .arg("/C")
-                    .arg("Get-CimInstance -Query \"SELECT * from Win32_Process WHERE name LIKE 'LeagueClientUx.exe'\" | Select-Object -ExpandProperty CommandLine")
-                    .creation_flags(0x08000000) // CREATE_NO_WINDOW
-                    .output()
-            }
-        }
-    }
-    .map_err(|e| "Could not run command:".to_owned() + &e.to_string())?;
 
     let output_str = String::from_utf8_lossy(&output.stdout);
 
