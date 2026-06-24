@@ -1,0 +1,286 @@
+DraftGap/lolmix UI context for external model tests
+
+Scope
+The target surface is DraftGap's in-app Builds tab. The task is to improve the UI where lolmix analysis results are displayed. This is not a landing page, a generic dashboard, or a replacement for the native DraftGap build analysis. It is an additive decision surface for the currently selected champion build.
+
+User workflow
+1. User opens DraftGap.
+2. User creates or imports a draft.
+3. User switches to the Builds tab.
+4. User selects a locked champion tab from ally or opponent team.
+5. DraftGap builds a lolmix request from the selected champion, selected/inferred role, and currently locked enemy champions only.
+6. If lolmix-server is reachable, the app fetches recommendations from POST /analyze.
+7. The user needs fast pre-game decisions: summoners, rune page, starter item, early skill, and first major build direction.
+
+Current build-tab placement
+The Builds tab has:
+- top champion tabs for ally and opponent locked picks;
+- a scrollable content area;
+- a lolmix connection status panel near the top;
+- a lolmix recommendations panel;
+- native DraftGap build sections labeled Pre-game and In-game.
+
+Current lolmix display
+The current panel:
+- uses a single Panel with heading "Lolmix";
+- shows a subheading like "Yasuo middle vs 5 locked enemies";
+- has a Refresh text button;
+- shows warnings in an amber block;
+- renders visible sections in a grid;
+- renders most sections as rows with entry name, sample line, score/base/combined metrics;
+- renders skill_early as a wide 6x4-like grid;
+- renders rune_page with tabs for overview/highest WR/most picked, then rune path metric boards using backing rune sections.
+
+Why the current display feels poor
+- The first viewport is not strongly decision-oriented.
+- Recommendations are grouped by source section rather than by the user's actual sequence of decisions.
+- Build progression is split into separate sections that do not read as one path.
+- Important matchup context in per_matchup is mostly hidden.
+- The rune page has useful special logic but the surrounding layout still feels like a data dump.
+- Warnings and state messages use large uppercase text that can dominate the panel.
+- Many repeated labels compete for attention: Score, Base, Combined, N, WR, PR.
+- Winning items, build path, and normal item sections are not clearly distinguished.
+
+Implementation context if later patching DraftGap
+Likely frontend files:
+- apps/frontend/src/components/lolmix/LolmixRecommendationsPanel.tsx
+- apps/frontend/src/components/lolmix/lolmix-display.ts
+- apps/frontend/src/contexts/LolmixContext.tsx
+- apps/frontend/src/api/lolmix-api.ts
+- apps/frontend/src/components/views/builds/BuildView.tsx
+- apps/frontend/src/components/views/builds/BuildsView.tsx
+
+Current integration boundary
+- DraftGap talks to lolmix only through HTTP JSON.
+- Default server is http://127.0.0.1:8765.
+- Health endpoint is GET /health.
+- Analysis endpoint is POST /analyze.
+- DraftGap must remain fully functional when lolmix-server is not running.
+- Do not import Python/lolmix code into DraftGap.
+- The parser preserves combined_wr and combined_pr; do not flatten those away.
+
+Technology and style
+- SolidJS and TypeScript.
+- Tailwind CSS v4 utility classes.
+- solid-heroicons is available for icons.
+- TanStack Solid Query handles fetch state.
+- Common Panel shape is rounded-md bg-primary p-4.
+- Body background is dark neutral; panels use #191919-ish bg-primary.
+- Headings are usually uppercase and compact.
+- App font is Oswald for the default UI and OpenSans for body copy when needed.
+- The UI is data-dense, game-tool oriented, and should stay compact.
+
+Useful visual tokens
+- primary: #191919.
+- background around main view: #101010.
+- text: #f4f4f4.
+- neutral borders: neutral-700/800.
+- muted text: neutral-400/500/600.
+- ally: #3b82f6.
+- opponent: #ef4444.
+- winrate-shiggo: #ff4e50.
+- winrate-meh: #fcb1b2.
+- winrate-okay: #fafafa.
+- winrate-good: #7ea4f4.
+- winrate-great: #3273fa.
+- winrate-volxd: #ff9b00.
+
+Design direction
+The improved UI should make the first screen actionable. A strong direction is to group results into decision phases:
+- Now: summoners, rune page, starter, level 1/2/3 skill.
+- Core path: first item, boots, second/third/fourth item, full build.
+- Matchup adaptations: winning_items, per-matchup deltas, enemy-slot effects.
+- Details: backing rune metrics, full ranked lists, raw sample counts, per-slot rows.
+
+State handling
+The component must account for:
+- invalid-draft;
+- not-configured;
+- idle;
+- loading;
+- unavailable;
+- validation-error;
+- unexpected-error;
+- success with warnings.
+Warnings are partial failures and should not hide successful recommendations.
+
+Responsive constraints
+- Desktop should not waste the build tab's wide center area.
+- Mobile should keep the top recommendation path visible without horizontal scrolling.
+- Wide tables are acceptable only for detail/drilldown sections with overflow-x-auto.
+- Skill grids and rune boards need stable dimensions.
+- Long item/build names must wrap or truncate intentionally; no text overlap.
+
+Testing expectations for an implementation
+- Renders success data with warnings.
+- Renders no-section and empty-section states.
+- Renders not-configured/unavailable/validation-error states.
+- Formats percent and signed percent correctly.
+- Does not show encoded rune_page keys raw.
+- Gives winning_items a combined WR headline.
+- Handles null per_matchup slots.
+- Handles unknown section names with a generic fallback.
+- Works with fewer than 5 enemies.
+- Works when backing rune detail sections are missing.
+
+
+---
+
+---
+
+## FILE CONTENT
+
+### lolmix_section_semantics.tsv
+
+```tsv
+section_name	display_title	decision_group	headline_metric	recommended_rendering	notes
+summoners	Summoners	Now	score	Compact ranked choice row or two-choice comparison	Show spell combo, score, combined WR/PR, sample size, and direct lane matchup signal when present.
+rune_page	Rune Page	Now	combined_wr	Human-readable rune page board with primary/secondary/shards and tabs or segmented controls	Parse encoded rune_page:v2 names. Never show raw encoded key. Use backing rune sections to enrich details.
+keystones	Keystones	Rune detail	combined_wr	Backing metric cells or drilldown list	Usually not a top-level section. Supports rune page explanation.
+runes_primary	Primary Runes	Rune detail	combined_wr	Backing metric cells or drilldown list	Usually not a top-level section. Supports rune page explanation.
+runes_secondary	Secondary Runes	Rune detail	combined_wr	Backing metric cells or drilldown list	Usually not a top-level section. Supports rune page explanation.
+stat_shards	Stat Shards	Rune detail	combined_wr	Three-slot shard selector board or backing detail	Names often include offense/flex/defense labels.
+skill_early	Early Skills	Now	score	Stable level-by-skill grid, 6 levels by Q/W/E/R	Do not render as a normal list. Missing cells should be blank, not layout-breaking.
+skill_order	Skill Order	Core path	score	Short ranked priority strip or row	Complements skill_early; do not duplicate if early grid already makes it obvious.
+starters	Starters	Now	score	Top starter choice with alternatives	Pre-game decision; should be near summoners/runes.
+boots	Boots	Core path	score	Build-path step with alternatives	Can be displayed inline in item progression.
+first_completed_item	First Item	Core path	score	Primary build path step	Major first in-game item decision.
+second_item	Second Item	Core path	score	Primary build path step	Should connect visually to first item.
+third_item	Third Item	Core path	score	Primary build path step	Should connect visually to later build path.
+fourth_item	Fourth Item	Core path	score	Primary build path step	Lower urgency than first/second item.
+full_build	Full Build	Core path	score	Condensed full sequence row	Can be a preview path or expandable list.
+winning_items	Winning Items	Matchup adaptations	combined_wr	Standout item/adaptation list	Sorted by combined_wr. Treat as matchup-context item evidence, not just another item stage.
+unknown	Unknown section	Details	score	Generic ranked list	Use section name as title, format all known metrics, and avoid crashing.
+```
+
+---
+
+## draftgap_lolmix_ui_prompt.txt (FULL VERSION - **MUST READ FIRST, IN A SINGLE TOOL CALL, i.e. without chunking/truncation**)
+
+```markdown
+You are designing a better analysis display for DraftGap's in-app Builds tab. You do not have access to either repository. Use only this prompt and the attached/reference files:
+
+- real_lolmix_analysis.json: a real-world example of a lolmix analysis response.
+- analysis_schema_reference.json: field definitions, metric semantics, request/response states, and contract constraints.
+- draftgap_ui_context.txt: product, layout, technical, and visual context from the current DraftGap/lolmix integration.
+  - lolmix_section_semantics.tsv (appended inline to the .txt for compactness): section-by-section rendering priorities.
+
+Your goal is to produce substantially better alternatives to the current lolmix recommendation display. The current layout is a mostly flat stack of section headings and dense rows/cards inside the DraftGap Builds tab. It exposes many numbers but does not help the user decide quickly what to take in champ select, why those recommendations matter against the current enemy draft, or how sections relate to the normal build flow.
+
+Important product context:
+
+- DraftGap is a League of Legends draft/build analysis app with a dark, compact, data-heavy UI.
+- The lolmix panel is additive. It must not replace DraftGap's native build tables; it should complement them.
+- The target surface is the in-app Builds tab. The user selects one locked champion from either team, then sees build recommendations for that champion against the currently locked enemy picks.
+- DraftGap only sends locked enemy picks to lolmix, not hovers.
+- lolmix is optional. DraftGap must still be useful when lolmix-server is not configured, unavailable, loading, or returning partial warnings.
+- The UI must be useful in champ select, where the user has limited time. It should prioritize fast decisions first and permit detail second.
+- Data can be partial. Missing sections, empty sections, unknown future sections, low sample sizes, null per-matchup slots, and warnings must be handled gracefully.
+- Metrics are decimals, not percentages. For example 0.527 means 52.7%; 0.034 means +3.4 percentage points when displayed as a signed score.
+- Do not hard-code the sample champion, sample enemies, or exact sample sections. Design for all valid analysis responses matching schema_version 1.
+
+Current implementation summary:
+
+- Frontend stack: SolidJS, TypeScript, Tailwind CSS v4, solid-heroicons, TanStack Solid Query.
+- Visual system: dark background, bg-primary panels, neutral borders, uppercase headings, compact Oswald display font, OpenSans body font where needed.
+- Relevant color tokens: primary #191919, page background around #101010/#171717, text #f4f4f4, ally #3b82f6, opponent #ef4444, winrate bad #ff4e50/#fcb1b2, neutral #fafafa, good #7ea4f4/#3273fa, exceptional #ff9b00.
+- The Builds view has champion tabs at the top, then a scrollable page containing a lolmix connection panel, the lolmix recommendations panel, then DraftGap's native "Pre-game" and "In-game" build analysis sections.
+- The current lolmix display shows warnings, then a grid of sections. Most sections are rows with name, sample size, score/base/combined metrics. Rune pages and early skills have custom renderers, but the overall information architecture still feels like a raw data dump.
+
+The data model you must respect:
+
+- Top-level response describes one analysis: selected champion/lane, patch, tier, queue, region, top_n, requested/returned sections, normalized enemies, warnings, and sections.
+- Each section contains entries.
+- Each entry has:
+  - id and name: entity identifier and display key/name. For rune_page entries, name is an encoded key that must be parsed; do not show it raw.
+  - section: section name.
+  - score: the general recommendation score, usually displayed as signed percentage points.
+  - overall_wr / overall_pr / overall_delta / overall_n: base champion/lane stats before matchup blending.
+  - combined_wr / combined_pr: matchup-weighted win/pick rates. combined_wr is the headline for winning_items and very useful for rune/detail grids.
+  - min_delta / max_delta: worst/best deltas across per-matchup slots where present.
+  - total_n_max: maximum sample count across overlapping matchup pages. Do not treat it as a sum.
+  - per_matchup: map of slot to raw entry or null. Slot "lane" is the direct lane opponent. Other slots are comp-context enemies.
+- Per-matchup raw entries include wr, pr, delta1, delta2, and n.
+- Enemy slots are one of lane, top, jungle, middle, bottom, support. For a mid Yasuo, enemy Zed is slot "lane"; Darius/Jhin/etc are contextual slots.
+- Warnings are non-fatal and should be visible without dominating the success state.
+
+Section-specific semantics:
+
+- summoners: summoner spell combinations. Fast pre-game decision. Use score plus base/combined WR/PR.
+- rune_page: encoded full rune pages. Parse the name into primary path, secondary path, selected runes, shards, and kind. Present as human-readable rune pages. Do not expose raw encoded strings.
+- keystones, runes_primary, runes_secondary, stat_shards: backing sections for rune metrics. They should usually support the rune_page display or be shown in a drilldown/comparison view, not as equal top-level sections.
+- skill_early: early level-by-level skill choices. Full real output can be a 6 levels x Q/W/E/R grid. It is not safely truncated. Make this scannable.
+- skill_order: longer-term skill priority such as Q>E>W.
+- starters, first_completed_item, boots, second_item, third_item, fourth_item, full_build: build progression. These should feel like a coherent path, not unrelated sections.
+- winning_items: items sorted by combined_wr rather than score; it is useful as a matchup-context "standout item" list and can be untruncated.
+
+Design requirements:
+
+1. Prioritize decision flow:
+   - First answer "what should I take now?"
+   - Then answer "what is the recommended build path?"
+   - Then answer "what changes because of these enemies?"
+   - Then expose detailed per-matchup evidence for inspection.
+
+2. Preserve DraftGap fit:
+   - Compact, dark, data-dense, work-focused.
+   - No marketing hero, no decorative gradients/orbs, no generic dashboard filler.
+   - Avoid cards inside cards. Use panels, bands, rows, segmented controls, tables, compact boards, or drilldowns where appropriate.
+   - Keep text legible and responsive. No overlapping text. Stable row/grid dimensions for fixed-format UI like skill grids and rune boards.
+   - Use familiar controls for modes: tabs/segmented controls for section groups, toggles for detail modes, icon buttons with tooltips where useful.
+
+3. Make metrics understandable without overexplaining in the UI:
+   - Use clear labels such as WR, PR, Score, Base, Combined, N.
+   - Display percent values with one decimal place unless a detail table calls for more.
+   - Use signed formatting for score/deltas.
+   - Include low-sample or missing-slot indicators.
+   - Show the direct lane matchup more prominently than contextual enemy slots.
+
+4. Handle states:
+   - invalid-draft: explain the missing selected champion/role/dataset in one compact message.
+   - not-configured: show a compact setup hint, but do not let it dominate the Builds tab.
+   - idle: say recommendations are ready if connected, otherwise point to connection.
+   - loading: skeleton or compact loading state that preserves layout.
+   - unavailable: actionable local-server hint.
+   - validation-error: show server message and field details.
+   - unexpected-error: show compact technical fallback.
+   - success with warnings: keep recommendations visible and show warnings as dismissible/compact context.
+
+5. Handle responsiveness:
+   - Desktop: center build-tab content with useful width; do not waste side space.
+   - Tablet/small desktop: sections should wrap predictably.
+   - Mobile: avoid wide-only tables except behind horizontal overflow; key decisions must remain visible without sideways scrolling.
+
+6. Do not create a generic analytics landing page. The first viewport should be the usable analysis display for the selected champion.
+
+Output requirements:
+
+1. Start with a short diagnosis of why the current display is weak. Keep this grounded in the provided context and data model.
+2. Propose three materially different UI alternatives. Each alternative must include:
+   - Name.
+   - Core layout idea.
+   - What appears in the first viewport on desktop and mobile.
+   - How it renders pre-game choices, build progression, matchup-specific evidence, rune pages, skill early, and warnings.
+   - Tradeoffs and risks.
+3. Choose one recommended alternative and explain why it best fits DraftGap's Builds tab.
+4. Provide an implementation-ready specification for the chosen alternative:
+   - Component hierarchy.
+   - Data transformation helpers.
+   - Sorting/grouping rules.
+   - Empty/loading/error states.
+   - Responsive behavior.
+   - Accessibility and keyboard/focus notes.
+   - Test cases or acceptance checks.
+5. If your harness can produce code or a prototype, produce one of these:
+   - A self-contained HTML/CSS/JS prototype that consumes real_lolmix_analysis.json, or
+   - SolidJS/TypeScript/Tailwind component code that is implementation-ready for the existing app, but do not assume access to repo-local imports beyond the names described here.
+6. Do not ask for more files. If a detail is missing, state the assumption and proceed.
+
+Quality bar:
+
+- The result should feel like a purpose-built champ-select build decision tool, not a generic table restyle.
+- The UI must preserve all meaningful data while using progressive disclosure.
+- The main recommendation path must remain visible even with warnings or partial matchup failures.
+- The design must work for champions/roles/items/runes not shown in the example JSON.
+- The final answer should be concrete enough that another engineer can implement it without guessing the information architecture.
+```

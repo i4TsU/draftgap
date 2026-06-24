@@ -4,13 +4,16 @@ import type { LolmixAnalyzeResponse } from "../../api/lolmix-api";
 import {
     formatLolmixPercent,
     formatLolmixSignedPercent,
+    groupLolmixSections,
     lolmixHeadlineMetric,
     lolmixSectionTitle,
     lolmixSkillEarlyKey,
     lolmixSetupSteps,
     lolmixUnavailableSetupHint,
     lolmixWarningLines,
+    parseLolmixReadableRunePage,
     parseLolmixRunePageKey,
+    sortedLolmixEntries,
     visibleLolmixEntries,
     visibleLolmixSections,
 } from "./lolmix-display";
@@ -141,13 +144,58 @@ describe("lolmix display helpers", () => {
 
         expect(headline.label).toBe("Combined WR");
         expect(headline.value).toBe("54.1%");
+
+        const sorted = sortedLolmixEntries(
+            {
+                name: "winning_items",
+                entries: [
+                    { ...entry(1, "winning_items"), combined_wr: 0.49 },
+                    { ...entry(2, "winning_items"), combined_wr: 0.54 },
+                ],
+            },
+            "combined_wr",
+        );
+
+        expect(sorted.map((item) => item.id)).toEqual([2, 1]);
+    });
+
+    test("groups top-level sections by decision phase", () => {
+        const grouped = groupLolmixSections({
+            ...response,
+            sections_returned: [
+                "winning_items",
+                "starters",
+                "keystones",
+                "first_completed_item",
+            ],
+            sections: [
+                { name: "winning_items", entries: [entry(1, "winning_items")] },
+                { name: "starters", entries: [entry(2, "starters")] },
+                { name: "keystones", entries: [entry(3, "keystones")] },
+                {
+                    name: "first_completed_item",
+                    entries: [entry(4, "first_completed_item")],
+                },
+            ],
+        });
+
+        expect(grouped.now.map((section) => section.name)).toEqual([
+            "starters",
+        ]);
+        expect(grouped.core.map((section) => section.name)).toEqual([
+            "first_completed_item",
+        ]);
+        expect(grouped.matchup.map((section) => section.name)).toEqual([
+            "winning_items",
+        ]);
+        expect(grouped.details).toEqual([]);
     });
 
     test("parses skill cells and structured rune page keys", () => {
         expect(
             lolmixSkillEarlyKey({
                 ...response.sections[0].entries[0],
-                name: "L3 W",
+                name: "L 3 W",
             }),
         ).toEqual({ level: 3, slot: "W" });
 
@@ -162,6 +210,26 @@ describe("lolmix display helpers", () => {
             primary: [8112, 8139, 8140, 8106],
             secondary: [9105, 8017],
             shards: [5008, 5008, 5001],
+        });
+    });
+
+    test("parses prose rune pages without exposing the raw key", () => {
+        const prose =
+            "Most Picked Rune Page: Precision \\u2014 Lethal Tempo + Absorb Life + Last Stand | Resolve \\u2014 Second Wind + Overgrowth | Shards: Attack Speed / Adaptive Force / Health Scaling".replace(
+                /\\u2014/g,
+                "\u2014",
+            );
+
+        expect(parseLolmixReadableRunePage(prose)).toEqual({
+            kind: "Most Picked",
+            primaryPathName: "Precision",
+            secondaryPathName: "Resolve",
+            primaryRunes: ["Lethal Tempo", "Absorb Life", "Last Stand"],
+            secondaryRunes: ["Second Wind", "Overgrowth"],
+            shards: ["Attack Speed", "Adaptive Force", "Health Scaling"],
+            keystone: "Lethal Tempo",
+            raw: prose,
+            encoded: false,
         });
     });
 
