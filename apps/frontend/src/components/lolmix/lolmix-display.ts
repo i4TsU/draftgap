@@ -6,7 +6,12 @@ import type {
 
 export type LolmixDecisionPhase = "now" | "core" | "matchup" | "details";
 
-type LolmixHeadlineMetric = "score" | "combined_wr";
+export type LolmixHeadlineMetric = "score" | "combined_wr";
+type LolmixCompletedItemSection =
+    | "first_completed_item"
+    | "second_item"
+    | "third_item"
+    | "fourth_item";
 type LolmixSectionRenderer =
     | "summoners"
     | "runes"
@@ -126,6 +131,18 @@ const LOLMIX_BACKING_RUNE_SECTIONS = new Set([
     "stat_shards",
 ]);
 
+export const LOLMIX_MIN_RECOMMENDED_PICK_RATE = 0.0001;
+export const LOLMIX_VIABLE_PICK_RATE_RATIO = 0.1;
+export const LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES = 4;
+export const LOLMIX_BUILD_PICK_CONFIDENCE_WEIGHT = 0.2;
+
+export const LOLMIX_COMPLETED_ITEM_SECTIONS = [
+    "first_completed_item",
+    "second_item",
+    "third_item",
+    "fourth_item",
+] as const satisfies readonly LolmixCompletedItemSection[];
+
 export const LOLMIX_PHASES: {
     id: LolmixDecisionPhase;
     label: string;
@@ -150,6 +167,20 @@ export const LOLMIX_MATCHUP_SLOT_ORDER = [
 
 export type LolmixSkillEarlySlot = (typeof LOLMIX_SKILL_EARLY_SLOTS)[number];
 export type LolmixMatchupSlot = (typeof LOLMIX_MATCHUP_SLOT_ORDER)[number];
+
+export type LolmixDisplayEntry = {
+    entry: LolmixRecommendationEntry;
+    recommended: boolean;
+    viable: boolean;
+    rare: boolean;
+};
+
+export type LolmixBuildPathStep = {
+    section: LolmixRecommendationSection;
+    recommended: LolmixRecommendationEntry | undefined;
+    collapsedEntries: LolmixDisplayEntry[];
+    expandedEntries: LolmixDisplayEntry[];
+};
 
 export type LolmixGroupedSections = Record<
     LolmixDecisionPhase,
@@ -205,6 +236,12 @@ export function visibleLolmixEntries(section: LolmixRecommendationSection) {
     return section.entries;
 }
 
+export function isLolmixRecommendationEligible(
+    entry: LolmixRecommendationEntry,
+) {
+    return entry.combined_pr >= LOLMIX_MIN_RECOMMENDED_PICK_RATE;
+}
+
 export function groupLolmixSections(
     data: LolmixAnalyzeResponse,
 ): LolmixGroupedSections {
@@ -214,7 +251,9 @@ export function groupLolmixSections(
         matchup: [],
         details: [],
     };
-    const byName = new Map(data.sections.map((section) => [section.name, section]));
+    const byName = new Map(
+        data.sections.map((section) => [section.name, section]),
+    );
     const orderedNames =
         data.sections_returned.length > 0
             ? data.sections_returned
@@ -252,7 +291,10 @@ export function lolmixTopEntry(
 ) {
     if (!section || section.entries.length === 0) return;
 
-    return sortedLolmixEntries(section, headline)[0];
+    return (
+        lolmixRecommendedEntry(section, headline) ??
+        sortedLolmixEntries(section, headline)[0]
+    );
 }
 
 export function sortedLolmixEntries(
@@ -266,6 +308,144 @@ export function sortedLolmixEntries(
             right.total_n_max - left.total_n_max ||
             right.combined_pr - left.combined_pr,
     );
+}
+
+export function lolmixRecommendedEntry(
+    section: LolmixRecommendationSection | undefined,
+    headline?: LolmixHeadlineMetric,
+) {
+    if (!section) return;
+
+    return sortedLolmixEntries(section, headline).find(
+        isLolmixRecommendationEligible,
+    );
+}
+
+export function lolmixViableEntries(
+    section: LolmixRecommendationSection,
+    options: {
+        headline?: LolmixHeadlineMetric;
+        maxEntries?: number;
+        excludedIds?: ReadonlySet<number>;
+    } = {},
+) {
+    const eligible = sortedLolmixEntries(section, options.headline).filter(
+        (entry) =>
+            isLolmixRecommendationEligible(entry) &&
+            !options.excludedIds?.has(entry.id),
+    );
+    if (eligible.length === 0) return [];
+
+    const maxPickRate = Math.max(...eligible.map((entry) => entry.combined_pr));
+    const threshold = maxPickRate * LOLMIX_VIABLE_PICK_RATE_RATIO;
+    const maxEntries =
+        options.maxEntries ?? LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES;
+
+    return eligible
+        .filter((entry) => entry.combined_pr >= threshold)
+        .slice(0, maxEntries);
+}
+
+export function lolmixDisplayEntries(
+    section: LolmixRecommendationSection,
+    options: {
+        headline?: LolmixHeadlineMetric;
+        recommended?: LolmixRecommendationEntry;
+        collapsedEntries?: readonly LolmixRecommendationEntry[];
+    } = {},
+) {
+    const recommended =
+        options.recommended ??
+        lolmixRecommendedEntry(section, options.headline);
+    const collapsed =
+        options.collapsedEntries ??
+        lolmixViableEntries(section, { headline: options.headline });
+    const collapsedIds = new Set(collapsed.map((entry) => entry.id));
+
+    return sortedLolmixEntries(section, options.headline).map((entry) => ({
+        entry,
+        recommended: recommended?.id === entry.id,
+        viable: collapsedIds.has(entry.id),
+        rare: !isLolmixRecommendationEligible(entry),
+    }));
+}
+
+export function lolmixCollapsedDisplayEntries(
+    section: LolmixRecommendationSection,
+    options: {
+        headline?: LolmixHeadlineMetric;
+        recommended?: LolmixRecommendationEntry;
+        excludedIds?: ReadonlySet<number>;
+    } = {},
+) {
+    const recommended =
+        options.recommended ??
+        lolmixRecommendedEntry(section, options.headline);
+    const collapsed = lolmixViableEntries(section, {
+        headline: options.headline,
+        excludedIds: options.excludedIds,
+    });
+    const entries = recommended
+        ? [
+              recommended,
+              ...collapsed.filter((entry) => entry.id !== recommended.id),
+          ].slice(0, LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES)
+        : collapsed;
+    const fallbackEntries =
+        entries.length > 0
+            ? entries
+            : sortedLolmixEntries(section, options.headline).slice(
+                  0,
+                  LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES,
+              );
+
+    return lolmixDisplayEntries(section, {
+        headline: options.headline,
+        recommended,
+        collapsedEntries: fallbackEntries,
+    }).filter((item) =>
+        fallbackEntries.some((entry) => entry.id === item.entry.id),
+    );
+}
+
+export function lolmixBuildPathSteps(
+    sections: LolmixRecommendationSection[],
+): LolmixBuildPathStep[] {
+    const completedSelections = lolmixOptimizedCompletedItemPath(sections);
+    const usedCompletedIds = new Set<number>();
+
+    return sections
+        .filter(
+            (section) =>
+                lolmixSectionMeta(section.name).renderer === "pathStep",
+        )
+        .map((section) => {
+            const completed = isCompletedItemSection(section.name);
+            const recommended = completed
+                ? completedSelections.get(section.name)
+                : lolmixRecommendedEntry(section);
+            const excludedIds = completed
+                ? new Set(usedCompletedIds)
+                : undefined;
+            const collapsedEntries = lolmixCollapsedDisplayEntries(section, {
+                recommended,
+                excludedIds,
+            });
+            const expandedEntries = lolmixDisplayEntries(section, {
+                recommended,
+            });
+
+            if (completed && recommended) {
+                usedCompletedIds.add(recommended.id);
+            }
+
+            return {
+                section,
+                recommended,
+                collapsedEntries,
+                expandedEntries,
+            };
+        });
 }
 
 export function lolmixHeadlineMetric(
@@ -498,11 +678,123 @@ export function lolmixLaneLabel(lane: string | undefined) {
     }
 }
 
-export function lolmixSectionByName(
-    data: LolmixAnalyzeResponse,
-    name: string,
-) {
+export function lolmixSectionByName(data: LolmixAnalyzeResponse, name: string) {
     return data.sections.find((section) => section.name === name);
+}
+
+function lolmixOptimizedCompletedItemPath(
+    sections: LolmixRecommendationSection[],
+) {
+    const byName = new Map(sections.map((section) => [section.name, section]));
+    const pools = LOLMIX_COMPLETED_ITEM_SECTIONS.map((sectionName) => {
+        const section = byName.get(sectionName);
+        return section
+            ? {
+                  sectionName,
+                  candidates: lolmixViableEntries(section, {
+                      maxEntries: Number.POSITIVE_INFINITY,
+                  }),
+              }
+            : undefined;
+    }).filter(
+        (
+            value,
+        ): value is {
+            sectionName: LolmixCompletedItemSection;
+            candidates: LolmixRecommendationEntry[];
+        } => !!value,
+    );
+
+    let best: {
+        sectionName: string;
+        entry: LolmixRecommendationEntry;
+        pickRateRatio: number;
+    }[] = [];
+
+    const visit = (
+        index: number,
+        usedIds: Set<number>,
+        choices: {
+            sectionName: string;
+            entry: LolmixRecommendationEntry;
+            pickRateRatio: number;
+        }[],
+    ) => {
+        if (index >= pools.length) {
+            if (isBetterCompletedPath(choices, best)) {
+                best = [...choices];
+            }
+            return;
+        }
+
+        const pool = pools[index];
+        const maxPickRate = Math.max(
+            ...pool.candidates.map((entry) => entry.combined_pr),
+        );
+        let picked = false;
+        for (const entry of pool.candidates) {
+            if (usedIds.has(entry.id)) continue;
+
+            picked = true;
+            usedIds.add(entry.id);
+            choices.push({
+                sectionName: pool.sectionName,
+                entry,
+                pickRateRatio: entry.combined_pr / maxPickRate,
+            });
+            visit(index + 1, usedIds, choices);
+            choices.pop();
+            usedIds.delete(entry.id);
+        }
+
+        if (!picked) {
+            visit(index + 1, usedIds, choices);
+        }
+    };
+
+    visit(0, new Set(), []);
+
+    return new Map(best.map((choice) => [choice.sectionName, choice.entry]));
+}
+
+function isBetterCompletedPath(
+    candidate: { entry: LolmixRecommendationEntry; pickRateRatio: number }[],
+    current: { entry: LolmixRecommendationEntry; pickRateRatio: number }[],
+) {
+    const left = completedPathMetrics(candidate);
+    const right = completedPathMetrics(current);
+
+    if (left.count !== right.count) return left.count > right.count;
+    if (left.utility !== right.utility) return left.utility > right.utility;
+    if (left.score !== right.score) return left.score > right.score;
+    if (left.pickRate !== right.pickRate) return left.pickRate > right.pickRate;
+    return left.sampleSize > right.sampleSize;
+}
+
+function completedPathMetrics(
+    path: { entry: LolmixRecommendationEntry; pickRateRatio: number }[],
+) {
+    return path.reduce(
+        (total, choice) => ({
+            count: total.count + 1,
+            score: total.score + choice.entry.score,
+            utility:
+                total.utility +
+                choice.entry.score +
+                choice.pickRateRatio * LOLMIX_BUILD_PICK_CONFIDENCE_WEIGHT,
+            pickRate: total.pickRate + choice.entry.combined_pr,
+            sampleSize: total.sampleSize + lolmixSampleSize(choice.entry),
+        }),
+        { count: 0, score: 0, utility: 0, pickRate: 0, sampleSize: 0 },
+    );
+}
+
+function isCompletedItemSection(
+    sectionName: string,
+): sectionName is LolmixCompletedItemSection {
+    return LOLMIX_COMPLETED_ITEM_SECTIONS.some(
+        (candidate) => candidate === sectionName,
+    );
 }
 
 function lolmixEntryValue(

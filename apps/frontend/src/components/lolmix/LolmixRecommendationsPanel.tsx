@@ -32,10 +32,15 @@ import {
     formatLolmixPercent,
     formatLolmixSignedPercent,
     groupLolmixSections,
+    isLolmixRecommendationEligible,
     lolmixActiveSlots,
+    lolmixBuildPathSteps,
+    lolmixCollapsedDisplayEntries,
+    lolmixDisplayEntries,
     lolmixEnemyBySlot,
     lolmixLaneLabel,
     lolmixLaneMatchup,
+    lolmixRecommendedEntry,
     lolmixSampleConfidence,
     lolmixScoreClass,
     lolmixScoreToneClass,
@@ -44,14 +49,14 @@ import {
     lolmixSectionTitle,
     lolmixSetupSteps,
     lolmixSkillEarlyKey,
-    lolmixTopEntry,
     lolmixUnavailableSetupHint,
     lolmixWarningLines,
     lolmixWinrateTextClass,
     parseLolmixReadableRunePage,
     parseLolmixRunePageKey,
-    sortedLolmixEntries,
+    type LolmixBuildPathStep,
     type LolmixDecisionPhase,
+    type LolmixDisplayEntry,
     type LolmixRunePage,
 } from "./lolmix-display";
 
@@ -118,7 +123,8 @@ export const LolmixRecommendationsContent: Component<Props> = (props) => {
                     </div>
                     <Show when={success()}>
                         <p class="mt-1 text-xs uppercase text-neutral-500">
-                            Patch {success()!.data.patch} / {success()!.data.tier}
+                            Patch {success()!.data.patch} /{" "}
+                            {success()!.data.tier}
                         </p>
                     </Show>
                 </div>
@@ -144,8 +150,8 @@ export const LolmixRecommendationsContent: Component<Props> = (props) => {
                 <Match when={props.state.status === "not-configured"}>
                     <StateMessage tone="muted" title="Lolmix is not configured">
                         Configure a lolmix-server host and port in Settings to
-                        request optional recommendations. DraftGap build analysis
-                        remains available below.
+                        request optional recommendations. DraftGap build
+                        analysis remains available below.
                     </StateMessage>
                 </Match>
                 <Match when={props.state.status === "idle"}>
@@ -291,7 +297,9 @@ const StateMessage: Component<{
         <div
             class={cn(
                 "mb-1 text-xs font-semibold uppercase tracking-wide",
-                props.tone === "warning" ? "text-amber-300" : "text-neutral-200",
+                props.tone === "warning"
+                    ? "text-amber-300"
+                    : "text-neutral-200",
             )}
         >
             {props.title}
@@ -674,7 +682,10 @@ const SectionRenderer: Component<{
                 />
             </Match>
             <Match when={renderer() === "winningItems"}>
-                <WinningItemsSection data={props.data} section={props.section} />
+                <WinningItemsSection
+                    data={props.data}
+                    section={props.section}
+                />
             </Match>
             <Match when={true}>
                 <GenericSection section={props.section} />
@@ -687,7 +698,12 @@ const SummonersSection: Component<{
     dataset: Dataset | undefined;
     section: LolmixRecommendationSection;
 }> = (props) => {
-    const entries = () => sortedLolmixEntries(props.section, "score").slice(0, 3);
+    const [expanded, setExpanded] = createSignal(false);
+    const collapsedEntries = () =>
+        lolmixCollapsedDisplayEntries(props.section, { headline: "score" });
+    const allEntries = () =>
+        lolmixDisplayEntries(props.section, { headline: "score" });
+    const entries = () => (expanded() ? allEntries() : collapsedEntries());
 
     return (
         <Show
@@ -696,45 +712,31 @@ const SummonersSection: Component<{
         >
             <div class="flex flex-col gap-1.5">
                 <For each={entries()}>
-                    {(entry, index) => {
-                        const lane = () => lolmixLaneMatchup(entry);
+                    {(item) => {
+                        const entry = () => item.entry;
+                        const lane = () => lolmixLaneMatchup(entry());
                         return (
                             <div
                                 class={cn(
                                     "flex min-w-0 items-center gap-3 rounded-md px-2.5 py-2",
-                                    index() === 0
+                                    item.recommended
                                         ? "bg-neutral-800/60 ring-1 ring-neutral-700"
                                         : "bg-neutral-950/25",
+                                    item.rare && "opacity-70",
                                 )}
                             >
                                 <SummonerSpellGlyphs
                                     dataset={props.dataset}
-                                    entry={entry}
+                                    entry={entry()}
                                 />
                                 <div class="min-w-0 flex-1">
                                     <div class="flex min-w-0 items-center gap-2">
                                         <span class="truncate text-sm font-medium text-neutral-100">
-                                            {entry.name}
+                                            {entry().name}
                                         </span>
-                                        <Show when={index() === 0}>
-                                            <span class="rounded bg-ally/15 px-1 py-px text-[10px] font-bold uppercase tracking-wide text-blue-300">
-                                                Pick
-                                            </span>
-                                        </Show>
+                                        <EntryBadge item={item} />
                                     </div>
-                                    <div class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs uppercase text-neutral-500">
-                                        <span>
-                                            WR{" "}
-                                            {formatLolmixPercent(
-                                                entry.combined_wr,
-                                            )}
-                                        </span>
-                                        <span>
-                                            PR{" "}
-                                            {formatLolmixPercent(
-                                                entry.combined_pr,
-                                            )}
-                                        </span>
+                                    <EntryStats class="mt-0.5" entry={entry()}>
                                         <Show when={lane()}>
                                             <span
                                                 class={lolmixScoreClass(
@@ -747,16 +749,27 @@ const SummonersSection: Component<{
                                                 )}
                                             </span>
                                         </Show>
-                                    </div>
+                                    </EntryStats>
                                 </div>
                                 <div class="flex shrink-0 flex-col items-end gap-1">
-                                    <ScoreChip value={entry.score} />
-                                    <SamplePill value={entry.total_n_max} />
+                                    <ScoreChip value={entry().score} />
+                                    <SamplePill value={entry().total_n_max} />
                                 </div>
                             </div>
                         );
                     }}
                 </For>
+                <Show when={allEntries().length > collapsedEntries().length}>
+                    <button
+                        type="button"
+                        class="self-start text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
+                        onClick={() => setExpanded(!expanded())}
+                    >
+                        {expanded()
+                            ? "Show fewer summoners"
+                            : `Show ${allEntries().length - collapsedEntries().length} more summoners`}
+                    </button>
+                </Show>
             </div>
         </Show>
     );
@@ -817,10 +830,17 @@ const RunePageSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
     const entries = createMemo(() =>
-        sortedLolmixEntries(props.section, "combined_wr"),
+        lolmixDisplayEntries(props.section, { headline: "combined_wr" }),
     );
-    const [selectedIndex, setSelectedIndex] = createSignal(0);
-    const selectedEntry = () => entries()[selectedIndex()] ?? entries()[0];
+    const [selectedIndex, setSelectedIndex] = createSignal<number>();
+    const activeIndex = () => {
+        const selected = selectedIndex();
+        if (selected !== undefined && entries()[selected]) return selected;
+
+        const recommended = entries().findIndex((entry) => entry.recommended);
+        return recommended >= 0 ? recommended : 0;
+    };
+    const selectedEntry = () => entries()[activeIndex()]?.entry;
 
     return (
         <Show
@@ -831,17 +851,20 @@ const RunePageSection: Component<{
                 <Show when={entries().length > 1}>
                     <div class="flex flex-wrap gap-1">
                         <For each={entries()}>
-                            {(entry, index) => {
+                            {(item, index) => {
                                 const page = () =>
-                                    parseLolmixReadableRunePage(entry.name);
+                                    parseLolmixReadableRunePage(
+                                        item.entry.name,
+                                    );
                                 return (
                                     <button
                                         type="button"
                                         class={cn(
                                             "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition",
-                                            index() === selectedIndex()
+                                            index() === activeIndex()
                                                 ? "bg-neutral-700 text-neutral-100"
                                                 : "bg-neutral-950/40 text-neutral-500 hover:text-neutral-300",
+                                            item.rare && "text-amber-300/80",
                                         )}
                                         onClick={() =>
                                             setSelectedIndex(index())
@@ -990,7 +1013,9 @@ const RunePathColumn: Component<{
         </div>
         <Show
             when={props.runes.length > 0}
-            fallback={<span class="text-xs text-neutral-600">No rune data</span>}
+            fallback={
+                <span class="text-xs text-neutral-600">No rune data</span>
+            }
         >
             <div class="flex flex-col gap-1">
                 <For each={props.runes}>
@@ -1028,6 +1053,8 @@ const SkillEarlySection: Component<{
             if (!key) continue;
 
             byCell.set(`${key.level}:${key.slot}`, entry);
+            if (!isLolmixRecommendationEligible(entry)) continue;
+
             const current = recommended.get(key.level);
             if (!current || entry.score > current.score) {
                 recommended.set(key.level, entry);
@@ -1093,10 +1120,14 @@ const SkillEarlySection: Component<{
                                         <For each={LOLMIX_SKILL_EARLY_LEVELS}>
                                             {(level) => (
                                                 <SkillEarlyCell
-                                                    entry={entryFor(level, slot)}
+                                                    entry={entryFor(
+                                                        level,
+                                                        slot,
+                                                    )}
                                                     recommended={
-                                                        recommendedFor(level) ===
-                                                        slot
+                                                        recommendedFor(
+                                                            level,
+                                                        ) === slot
                                                     }
                                                 />
                                             )}
@@ -1108,8 +1139,8 @@ const SkillEarlySection: Component<{
                     </table>
                 </div>
                 <p class="font-body text-[11px] text-neutral-600">
-                    Cells show score in percentage points. Outlined cells are
-                    the best skill at that level.
+                    Cells show score and PR. Outlined cells are the best
+                    eligible skill at that level.
                 </p>
             </div>
         </Show>
@@ -1128,10 +1159,12 @@ const SkillEarlyCell: Component<{
             {(entry) => (
                 <div
                     class={cn(
-                        "grid h-8 place-items-center rounded border text-[10px] font-semibold tabular-nums",
+                        "flex h-10 flex-col items-center justify-center rounded border text-[10px] font-semibold tabular-nums",
                         lolmixScoreClass(entry().score),
                         lolmixScoreToneClass(entry().score),
                         props.recommended && "ring-1 ring-current",
+                        !isLolmixRecommendationEligible(entry()) &&
+                            "opacity-70",
                     )}
                     title={`Score ${formatLolmixSignedPercent(
                         entry().score,
@@ -1139,7 +1172,15 @@ const SkillEarlyCell: Component<{
                         entry().combined_wr,
                     )} / n=${formatLolmixCompactCount(entry().total_n_max)}`}
                 >
-                    {formatLolmixSignedPercent(entry().score).replace("%", "")}
+                    <span>
+                        {formatLolmixSignedPercent(entry().score).replace(
+                            "%",
+                            "",
+                        )}
+                    </span>
+                    <span class="text-[9px] uppercase text-neutral-400">
+                        PR {formatLolmixPercent(entry().combined_pr)}
+                    </span>
                 </div>
             )}
         </Show>
@@ -1149,23 +1190,29 @@ const SkillEarlyCell: Component<{
 const SkillOrderSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
-    const entries = () => sortedLolmixEntries(props.section, "score").slice(0, 3);
+    const [expanded, setExpanded] = createSignal(false);
+    const collapsedEntries = () =>
+        lolmixCollapsedDisplayEntries(props.section, { headline: "score" });
+    const allEntries = () =>
+        lolmixDisplayEntries(props.section, { headline: "score" });
+    const entries = () => (expanded() ? allEntries() : collapsedEntries());
 
     return (
         <Show when={entries().length > 0} fallback={null}>
             <div class="flex flex-col gap-1.5">
                 <For each={entries()}>
-                    {(entry, index) => (
+                    {(item) => (
                         <div
                             class={cn(
                                 "flex min-w-0 items-center gap-2 rounded-md px-2.5 py-2",
-                                index() === 0
+                                item.recommended
                                     ? "bg-neutral-800/60 ring-1 ring-neutral-700"
                                     : "bg-neutral-950/25",
+                                item.rare && "opacity-70",
                             )}
                         >
                             <div class="flex shrink-0 gap-1">
-                                <For each={entry.name.split("")}>
+                                <For each={item.entry.name.split("")}>
                                     {(skill) => (
                                         <span class="grid h-6 w-6 place-items-center rounded bg-neutral-800 text-xs font-bold text-neutral-200">
                                             {skill}
@@ -1176,16 +1223,26 @@ const SkillOrderSection: Component<{
                             <span class="text-xs uppercase text-neutral-500">
                                 priority
                             </span>
+                            <EntryBadge item={item} />
                             <div class="ml-auto flex flex-wrap items-center justify-end gap-2">
-                                <span class="text-xs uppercase tabular-nums text-neutral-400">
-                                    WR {formatLolmixPercent(entry.combined_wr)}
-                                </span>
-                                <ScoreChip value={entry.score} />
-                                <SamplePill value={entry.total_n_max} />
+                                <EntryStats entry={item.entry} />
+                                <ScoreChip value={item.entry.score} />
+                                <SamplePill value={item.entry.total_n_max} />
                             </div>
                         </div>
                     )}
                 </For>
+                <Show when={allEntries().length > collapsedEntries().length}>
+                    <button
+                        type="button"
+                        class="self-start text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
+                        onClick={() => setExpanded(!expanded())}
+                    >
+                        {expanded()
+                            ? "Show fewer orders"
+                            : `Show ${allEntries().length - collapsedEntries().length} more orders`}
+                    </button>
+                </Show>
             </div>
         </Show>
     );
@@ -1196,10 +1253,7 @@ const BuildPath: Component<{
     dataset: Dataset | undefined;
     sections: LolmixRecommendationSection[];
 }> = (props) => {
-    const steps = () =>
-        props.sections.filter(
-            (section) => lolmixSectionMeta(section.name).renderer === "pathStep",
-        );
+    const steps = () => lolmixBuildPathSteps(props.sections);
 
     return (
         <Show
@@ -1214,7 +1268,7 @@ const BuildPath: Component<{
                             dataset={props.dataset}
                             index={index() + 1}
                             isLast={index() === steps().length - 1}
-                            section={section}
+                            step={section}
                         />
                     )}
                 </For>
@@ -1228,29 +1282,34 @@ const BuildStep: Component<{
     dataset: Dataset | undefined;
     index: number;
     isLast: boolean;
-    section: LolmixRecommendationSection;
+    step: LolmixBuildPathStep;
 }> = (props) => {
     const [open, setOpen] = createSignal(false);
-    const entries = createMemo(() => sortedLolmixEntries(props.section, "score"));
-    const top = () => entries()[0];
-    const alternatives = () => entries().slice(1, 5);
+    const entries = () =>
+        open() ? props.step.expandedEntries : props.step.collapsedEntries;
+    const hiddenCount = () =>
+        Math.max(
+            0,
+            props.step.expandedEntries.length -
+                props.step.collapsedEntries.length,
+        );
 
     return (
-        <Show when={top()}>
-            {(entry) => (
-                <li class="relative pl-7">
-                    <span class="absolute left-[10px] top-0 flex h-full w-px justify-center">
-                        <Show when={!props.isLast}>
-                            <span class="absolute bottom-0 top-7 w-px bg-neutral-800" />
-                        </Show>
-                    </span>
-                    <span class="absolute left-0 top-2 grid h-5 w-5 place-items-center rounded-full bg-neutral-800 text-[10px] font-bold text-neutral-300 ring-1 ring-neutral-700">
-                        {props.index}
-                    </span>
-                    <div class="mb-1.5">
+        <Show when={props.step.expandedEntries.length > 0}>
+            <li class="relative pl-7">
+                <span class="absolute left-[10px] top-0 flex h-full w-px justify-center">
+                    <Show when={!props.isLast}>
+                        <span class="absolute bottom-0 top-7 w-px bg-neutral-800" />
+                    </Show>
+                </span>
+                <span class="absolute left-0 top-2 grid h-5 w-5 place-items-center rounded-full bg-neutral-800 text-[10px] font-bold text-neutral-300 ring-1 ring-neutral-700">
+                    {props.index}
+                </span>
+                <div class="mb-2 flex flex-col gap-1.5">
+                    <div class="rounded-md bg-neutral-950/30">
                         <button
                             type="button"
-                            class="flex w-full min-w-0 items-center gap-2 rounded-md bg-neutral-950/30 px-2.5 py-2 text-left transition hover:bg-neutral-800/60"
+                            class="flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left transition hover:bg-neutral-800/60"
                             onClick={() => setOpen(!open())}
                         >
                             <Icon
@@ -1261,71 +1320,97 @@ const BuildStep: Component<{
                                 )}
                             />
                             <span class="w-20 shrink-0 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                                {lolmixSectionTitle(props.section.name)}
+                                {lolmixSectionTitle(props.step.section.name)}
                             </span>
-                            <ItemIcon
-                                dataset={props.dataset}
-                                itemId={entry().id}
-                            />
-                            <span
-                                class="min-w-0 flex-1 truncate text-sm font-medium text-neutral-100"
-                                title={entry().name}
-                            >
-                                {entry().name}
+                            <span class="min-w-0 flex-1 truncate text-xs uppercase text-neutral-500">
+                                <Show
+                                    when={props.step.recommended}
+                                    fallback="No eligible recommendation"
+                                >
+                                    {(entry) => (
+                                        <>
+                                            Optimized:{" "}
+                                            <span class="text-neutral-200">
+                                                {entry().name}
+                                            </span>
+                                        </>
+                                    )}
+                                </Show>
                             </span>
-                            <span class="hidden shrink-0 text-xs uppercase tabular-nums text-neutral-400 sm:inline">
-                                WR {formatLolmixPercent(entry().combined_wr)}
+                            <span class="shrink-0 text-[10px] uppercase text-neutral-500">
+                                {props.step.collapsedEntries.length} viable
                             </span>
-                            <ScoreChip value={entry().score} />
                         </button>
                     </div>
-                    <Show when={open()}>
-                        <div class="mb-2 ml-1 flex flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-950/25 p-2.5">
-                            <MatchupRow data={props.data} entry={entry()} />
-                            <Show when={alternatives().length > 0}>
-                                <div>
-                                    <div class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                                        Alternatives
-                                    </div>
-                                    <div class="flex flex-col gap-1">
-                                        <For each={alternatives()}>
-                                            {(alternative) => (
-                                                <div class="flex min-w-0 items-center gap-2 rounded px-1.5 py-1 text-xs">
-                                                    <ItemIcon
-                                                        dataset={props.dataset}
-                                                        itemId={alternative.id}
-                                                        small
-                                                    />
-                                                    <span class="min-w-0 flex-1 truncate text-neutral-300">
-                                                        {alternative.name}
-                                                    </span>
-                                                    <span class="text-neutral-500">
-                                                        WR{" "}
-                                                        {formatLolmixPercent(
-                                                            alternative.combined_wr,
-                                                        )}
-                                                    </span>
-                                                    <ScoreChip
-                                                        value={alternative.score}
-                                                    />
-                                                    <SamplePill
-                                                        value={
-                                                            alternative.total_n_max
-                                                        }
-                                                    />
-                                                </div>
-                                            )}
-                                        </For>
-                                    </div>
-                                </div>
-                            </Show>
+                    <Show
+                        when={entries().length > 0}
+                        fallback={
+                            <div class="rounded-md border border-amber-400/20 bg-amber-400/10 px-2.5 py-2 text-xs text-amber-200">
+                                Returned options are all below 0.01% PR.
+                            </div>
+                        }
+                    >
+                        <div class="flex flex-col gap-1">
+                            <For each={entries()}>
+                                {(item) => (
+                                    <BuildOptionRow
+                                        dataset={props.dataset}
+                                        item={item}
+                                    />
+                                )}
+                            </For>
                         </div>
                     </Show>
-                </li>
-            )}
+                    <Show when={hiddenCount() > 0}>
+                        <button
+                            type="button"
+                            class="self-start text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
+                            onClick={() => setOpen(!open())}
+                        >
+                            {open()
+                                ? "Show fewer options"
+                                : `Show ${hiddenCount()} more options`}
+                        </button>
+                    </Show>
+                    <Show when={open() && props.step.recommended}>
+                        {(entry) => (
+                            <div class="rounded-md border border-neutral-800 bg-neutral-950/25 p-2.5">
+                                <MatchupRow data={props.data} entry={entry()} />
+                            </div>
+                        )}
+                    </Show>
+                </div>
+            </li>
         </Show>
     );
 };
+
+const BuildOptionRow: Component<{
+    dataset: Dataset | undefined;
+    item: LolmixDisplayEntry;
+}> = (props) => (
+    <div
+        class={cn(
+            "flex min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-xs",
+            props.item.recommended
+                ? "bg-neutral-800/60 ring-1 ring-neutral-700"
+                : "bg-neutral-950/25",
+            props.item.rare && "opacity-70",
+        )}
+    >
+        <ItemIcon dataset={props.dataset} itemId={props.item.entry.id} small />
+        <span
+            class="min-w-0 flex-1 truncate text-neutral-200"
+            title={props.item.entry.name}
+        >
+            {props.item.entry.name}
+        </span>
+        <EntryBadge item={props.item} />
+        <EntryStats entry={props.item.entry} />
+        <ScoreChip value={props.item.entry.score} />
+        <SamplePill value={props.item.entry.total_n_max} />
+    </div>
+);
 
 const MatchupRow: Component<{
     data: LolmixAnalyzeResponse;
@@ -1400,7 +1485,9 @@ const MatchupRow: Component<{
                                                     )}
                                                 </span>
                                             </div>
-                                            <DeltaBar value={current().delta1} />
+                                            <DeltaBar
+                                                value={current().delta1}
+                                            />
                                         </div>
                                     )}
                                 </Show>
@@ -1418,25 +1505,31 @@ const FullBuildSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
     const [expanded, setExpanded] = createSignal(false);
-    const entries = () => sortedLolmixEntries(props.section, "score");
-    const shown = () => (expanded() ? entries() : entries().slice(0, 3));
+    const collapsedEntries = () =>
+        lolmixCollapsedDisplayEntries(props.section, { headline: "score" });
+    const allEntries = () =>
+        lolmixDisplayEntries(props.section, { headline: "score" });
+    const shown = () => (expanded() ? allEntries() : collapsedEntries());
 
     return (
-        <Show when={entries().length > 0} fallback={null}>
+        <Show when={shown().length > 0} fallback={null}>
             <div class="flex flex-col gap-1.5">
                 <For each={shown()}>
-                    {(entry, index) => (
+                    {(item) => (
                         <div
                             class={cn(
                                 "rounded-md px-2.5 py-2",
-                                index() === 0
+                                item.recommended
                                     ? "bg-neutral-800/60 ring-1 ring-neutral-700"
                                     : "bg-neutral-950/25",
+                                item.rare && "opacity-70",
                             )}
                         >
                             <div class="flex min-w-0 items-center gap-2">
                                 <div class="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                                    <For each={splitEntryParts(entry.name)}>
+                                    <For
+                                        each={splitEntryParts(item.entry.name)}
+                                    >
                                         {(part, partIndex) => (
                                             <>
                                                 <span class="rounded bg-neutral-800 px-1.5 py-0.5 text-xs text-neutral-200">
@@ -1446,7 +1539,7 @@ const FullBuildSection: Component<{
                                                     when={
                                                         partIndex() <
                                                         splitEntryParts(
-                                                            entry.name,
+                                                            item.entry.name,
                                                         ).length -
                                                             1
                                                     }
@@ -1459,16 +1552,15 @@ const FullBuildSection: Component<{
                                         )}
                                     </For>
                                 </div>
-                                <span class="shrink-0 text-xs uppercase tabular-nums text-neutral-400">
-                                    WR {formatLolmixPercent(entry.combined_wr)}
-                                </span>
-                                <ScoreChip value={entry.score} />
-                                <SamplePill value={entry.total_n_max} />
+                                <EntryBadge item={item} />
+                                <EntryStats entry={item.entry} />
+                                <ScoreChip value={item.entry.score} />
+                                <SamplePill value={item.entry.total_n_max} />
                             </div>
                         </div>
                     )}
                 </For>
-                <Show when={entries().length > 3}>
+                <Show when={allEntries().length > collapsedEntries().length}>
                     <button
                         type="button"
                         class="self-start text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
@@ -1476,7 +1568,7 @@ const FullBuildSection: Component<{
                     >
                         {expanded()
                             ? "Show fewer builds"
-                            : `Show ${entries().length - 3} more builds`}
+                            : `Show ${allEntries().length - collapsedEntries().length} more builds`}
                     </button>
                 </Show>
             </div>
@@ -1489,29 +1581,42 @@ const WinningItemsSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
     const [openIndex, setOpenIndex] = createSignal<number>();
-    const entries = () => sortedLolmixEntries(props.section, "combined_wr");
-    const minWr = () => Math.min(...entries().map((entry) => entry.combined_wr));
-    const maxWr = () => Math.max(...entries().map((entry) => entry.combined_wr));
+    const entries = () =>
+        lolmixDisplayEntries(props.section, { headline: "combined_wr" });
+    const minWr = () =>
+        Math.min(...entries().map((item) => item.entry.combined_wr));
+    const maxWr = () =>
+        Math.max(...entries().map((item) => item.entry.combined_wr));
     const span = () => Math.max(0.0001, maxWr() - minWr());
 
     return (
         <Show
             when={entries().length > 0}
-            fallback={<EmptyState>No standout items for this matchup</EmptyState>}
+            fallback={
+                <EmptyState>No standout items for this matchup</EmptyState>
+            }
         >
             <div class="flex flex-col gap-1">
                 <For each={entries()}>
-                    {(entry, index) => {
+                    {(item, index) => {
                         const isOpen = () => openIndex() === index();
                         const barWidth = () =>
-                            12 + ((entry.combined_wr - minWr()) / span()) * 88;
+                            12 +
+                            ((item.entry.combined_wr - minWr()) / span()) * 88;
                         const lowSample = () =>
                             ["low", "tiny"].includes(
-                                lolmixSampleConfidence(entry.total_n_max),
+                                lolmixSampleConfidence(item.entry.total_n_max),
                             );
 
                         return (
-                            <div class="rounded-md bg-neutral-950/25">
+                            <div
+                                class={cn(
+                                    "rounded-md bg-neutral-950/25",
+                                    item.recommended &&
+                                        "ring-1 ring-neutral-700",
+                                    item.rare && "opacity-70",
+                                )}
+                            >
                                 <button
                                     type="button"
                                     class="flex w-full min-w-0 items-center gap-2 px-2.5 py-2 text-left hover:bg-neutral-800/40"
@@ -1530,10 +1635,11 @@ const WinningItemsSection: Component<{
                                     />
                                     <span
                                         class="w-32 shrink-0 truncate text-sm text-neutral-100 sm:w-44"
-                                        title={entry.name}
+                                        title={item.entry.name}
                                     >
-                                        {entry.name}
+                                        {item.entry.name}
                                     </span>
+                                    <EntryBadge item={item} />
                                     <div class="hidden h-2 flex-1 overflow-hidden rounded-full bg-neutral-800/60 sm:block">
                                         <div
                                             class="h-full rounded-full bg-winrate-good"
@@ -1546,21 +1652,31 @@ const WinningItemsSection: Component<{
                                         class={cn(
                                             "shrink-0 text-sm font-semibold tabular-nums",
                                             lolmixWinrateTextClass(
-                                                entry.combined_wr,
+                                                item.entry.combined_wr,
                                             ),
                                         )}
                                     >
-                                        {formatLolmixPercent(entry.combined_wr)}
+                                        {formatLolmixPercent(
+                                            item.entry.combined_wr,
+                                        )}
+                                    </span>
+                                    <span class="shrink-0 text-xs uppercase tabular-nums text-neutral-400">
+                                        PR{" "}
+                                        {formatLolmixPercent(
+                                            item.entry.combined_pr,
+                                        )}
                                     </span>
                                     <span
                                         class={cn(
                                             "hidden shrink-0 text-xs tabular-nums sm:inline",
-                                            lolmixScoreClass(entry.max_delta),
+                                            lolmixScoreClass(
+                                                item.entry.max_delta,
+                                            ),
                                         )}
                                     >
                                         Best{" "}
                                         {formatLolmixSignedPercent(
-                                            entry.max_delta,
+                                            item.entry.max_delta,
                                         )}
                                     </span>
                                     <Show when={lowSample()}>
@@ -1576,25 +1692,25 @@ const WinningItemsSection: Component<{
                                     <div class="px-3 pb-2.5">
                                         <MatchupRow
                                             data={props.data}
-                                            entry={entry}
+                                            entry={item.entry}
                                         />
                                         <div class="mt-2 flex flex-wrap items-center gap-3 border-t border-neutral-800 pt-2 text-[10px] uppercase text-neutral-500">
                                             <span>
                                                 Base WR{" "}
                                                 {formatLolmixPercent(
-                                                    entry.overall_wr,
+                                                    item.entry.overall_wr,
                                                 )}
                                             </span>
                                             <span>
                                                 PR{" "}
                                                 {formatLolmixPercent(
-                                                    entry.combined_pr,
+                                                    item.entry.combined_pr,
                                                 )}
                                             </span>
                                             <span>
                                                 n=
                                                 {formatLolmixCompactCount(
-                                                    entry.total_n_max,
+                                                    item.entry.total_n_max,
                                                 )}
                                             </span>
                                         </div>
@@ -1613,13 +1729,15 @@ const GenericSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
     const entries = () =>
-        sortedLolmixEntries(
-            props.section,
-            lolmixSectionMeta(props.section.name).headline,
-        ).slice(0, 8);
+        lolmixDisplayEntries(props.section, {
+            headline: lolmixSectionMeta(props.section.name).headline,
+        });
 
     return (
-        <Show when={entries().length > 0} fallback={<EmptyState>Empty section</EmptyState>}>
+        <Show
+            when={entries().length > 0}
+            fallback={<EmptyState>Empty section</EmptyState>}
+        >
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[24rem] text-xs">
                     <thead>
@@ -1627,42 +1745,47 @@ const GenericSection: Component<{
                             <th class="py-1 pr-2 text-left font-medium">
                                 Name
                             </th>
-                            <th class="px-2 py-1 text-right font-medium">
-                                WR
-                            </th>
-                            <th class="px-2 py-1 text-right font-medium">
-                                PR
-                            </th>
+                            <th class="px-2 py-1 text-right font-medium">WR</th>
+                            <th class="px-2 py-1 text-right font-medium">PR</th>
                             <th class="px-2 py-1 text-right font-medium">
                                 Score
                             </th>
-                            <th class="py-1 pl-2 text-right font-medium">
-                                N
-                            </th>
+                            <th class="py-1 pl-2 text-right font-medium">N</th>
                         </tr>
                     </thead>
                     <tbody>
                         <For each={entries()}>
-                            {(entry) => (
-                                <tr class="border-t border-neutral-800/70">
+                            {(item) => (
+                                <tr
+                                    class={cn(
+                                        "border-t border-neutral-800/70",
+                                        item.recommended && "bg-neutral-800/30",
+                                        item.rare && "opacity-70",
+                                    )}
+                                >
                                     <td
                                         class="max-w-[14rem] truncate py-1.5 pr-2 text-neutral-200"
-                                        title={entry.name}
+                                        title={item.entry.name}
                                     >
-                                        {entry.name}
+                                        <span>{item.entry.name}</span>
+                                        <EntryBadge item={item} />
                                     </td>
                                     <td class="px-2 py-1.5 text-right tabular-nums text-neutral-300">
-                                        {formatLolmixPercent(entry.combined_wr)}
+                                        {formatLolmixPercent(
+                                            item.entry.combined_wr,
+                                        )}
                                     </td>
                                     <td class="px-2 py-1.5 text-right tabular-nums text-neutral-400">
-                                        {formatLolmixPercent(entry.combined_pr)}
+                                        {formatLolmixPercent(
+                                            item.entry.combined_pr,
+                                        )}
                                     </td>
                                     <td class="px-2 py-1.5 text-right">
-                                        <ScoreChip value={entry.score} />
+                                        <ScoreChip value={item.entry.score} />
                                     </td>
                                     <td class="py-1.5 pl-2 text-right">
                                         <SamplePill
-                                            value={entry.total_n_max}
+                                            value={item.entry.total_n_max}
                                         />
                                     </td>
                                 </tr>
@@ -1888,6 +2011,38 @@ const RuneMetricCell: Component<{
     </div>
 );
 
+const EntryBadge: Component<{ item: LolmixDisplayEntry }> = (props) => (
+    <Show when={props.item.recommended || props.item.rare}>
+        <span
+            class={cn(
+                "shrink-0 rounded px-1 py-px text-[10px] font-bold uppercase tracking-wide",
+                props.item.recommended
+                    ? "bg-ally/15 text-blue-300"
+                    : "bg-amber-400/10 text-amber-300",
+            )}
+        >
+            {props.item.recommended ? "Pick" : "Rare"}
+        </span>
+    </Show>
+);
+
+const EntryStats: Component<{
+    entry: LolmixRecommendationEntry;
+    class?: string;
+    children?: JSX.Element;
+}> = (props) => (
+    <div
+        class={cn(
+            "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs uppercase text-neutral-500",
+            props.class,
+        )}
+    >
+        <span>WR {formatLolmixPercent(props.entry.combined_wr)}</span>
+        <span>PR {formatLolmixPercent(props.entry.combined_pr)}</span>
+        {props.children}
+    </div>
+);
+
 const ScoreChip: Component<{ value: number }> = (props) => (
     <span
         class={cn(
@@ -1903,8 +2058,7 @@ const ScoreChip: Component<{ value: number }> = (props) => (
 
 const SamplePill: Component<{ value: number | undefined }> = (props) => {
     const confidence = () => lolmixSampleConfidence(props.value);
-    const lowSample = () =>
-        confidence() === "low" || confidence() === "tiny";
+    const lowSample = () => confidence() === "low" || confidence() === "tiny";
 
     return (
         <span
@@ -1982,17 +2136,22 @@ function quickDecisionTiles(data: LolmixAnalyzeResponse) {
         score?: number;
     }[] = [];
 
-    const summoners = lolmixTopEntry(lolmixSectionByName(data, "summoners"));
+    const summoners = lolmixRecommendedEntry(
+        lolmixSectionByName(data, "summoners"),
+    );
     if (summoners) {
         tiles.push({
             label: "Summoners",
             value: summoners.name,
-            sub: `WR ${formatLolmixPercent(summoners.combined_wr)}`,
+            sub: `WR ${formatLolmixPercent(summoners.combined_wr)} / PR ${formatLolmixPercent(summoners.combined_pr)}`,
             score: summoners.score,
         });
     }
 
-    const rune = lolmixTopEntry(lolmixSectionByName(data, "rune_page"));
+    const rune = lolmixRecommendedEntry(
+        lolmixSectionByName(data, "rune_page"),
+        "combined_wr",
+    );
     if (rune) {
         const page = parseLolmixReadableRunePage(rune.name);
         tiles.push({
@@ -2002,29 +2161,31 @@ function quickDecisionTiles(data: LolmixAnalyzeResponse) {
                 page?.primaryPathName ??
                 page?.kind ??
                 "Rune page",
-            sub: `WR ${formatLolmixPercent(rune.combined_wr)}`,
+            sub: `WR ${formatLolmixPercent(rune.combined_wr)} / PR ${formatLolmixPercent(rune.combined_pr)}`,
             score: rune.score,
         });
     }
 
-    const starter = lolmixTopEntry(lolmixSectionByName(data, "starters"));
+    const starter = lolmixRecommendedEntry(
+        lolmixSectionByName(data, "starters"),
+    );
     if (starter) {
         tiles.push({
             label: "Starter",
             value: starter.name,
-            sub: `WR ${formatLolmixPercent(starter.combined_wr)}`,
+            sub: `WR ${formatLolmixPercent(starter.combined_wr)} / PR ${formatLolmixPercent(starter.combined_pr)}`,
             score: starter.score,
         });
     }
 
-    const firstItem = lolmixTopEntry(
+    const firstItem = lolmixRecommendedEntry(
         lolmixSectionByName(data, "first_completed_item"),
     );
     if (firstItem) {
         tiles.push({
             label: "First item",
             value: firstItem.name,
-            sub: `WR ${formatLolmixPercent(firstItem.combined_wr)}`,
+            sub: `WR ${formatLolmixPercent(firstItem.combined_wr)} / PR ${formatLolmixPercent(firstItem.combined_pr)}`,
             score: firstItem.score,
         });
     }
@@ -2032,6 +2193,7 @@ function quickDecisionTiles(data: LolmixAnalyzeResponse) {
     const skillEarly = lolmixSectionByName(data, "skill_early");
     const levelOne = skillEarly?.entries
         .filter((entry) => lolmixSkillEarlyKey(entry)?.level === 1)
+        .filter(isLolmixRecommendationEligible)
         .sort((left, right) => right.score - left.score)[0];
     if (levelOne) {
         tiles.push({
@@ -2094,9 +2256,7 @@ function runeSlotsForPath(
         .filter((slot) => !(skipKeystones && slot === 0))
         .map((slot) =>
             Object.values(dataset.runeData)
-                .filter(
-                    (rune) => rune.pathId === pathId && rune.slot === slot,
-                )
+                .filter((rune) => rune.pathId === pathId && rune.slot === slot)
                 .sort((left, right) => left.index - right.index),
         )
         .filter((slot) => slot.length > 0);
@@ -2106,7 +2266,9 @@ function statShardOptions(dataset: Dataset, slot: number) {
     return Object.values(dataset.statShardData)
         .map((shard) => ({
             shard,
-            position: shard.positions.find((position) => position.slot === slot),
+            position: shard.positions.find(
+                (position) => position.slot === slot,
+            ),
         }))
         .filter(
             (
@@ -2134,6 +2296,8 @@ function statShardEntry(
 }
 
 function runePathIndex(pathId: number) {
-    const index = RUNE_PATH_ORDER.findIndex((candidate) => candidate === pathId);
+    const index = RUNE_PATH_ORDER.findIndex(
+        (candidate) => candidate === pathId,
+    );
     return index >= 0 ? index : undefined;
 }
