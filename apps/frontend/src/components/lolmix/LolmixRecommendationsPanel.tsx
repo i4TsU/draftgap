@@ -52,6 +52,7 @@ import {
     lolmixUnavailableSetupHint,
     lolmixWarningLines,
     lolmixWinrateTextClass,
+    parseLolmixDisplayRunePageKey,
     parseLolmixReadableRunePage,
     parseLolmixRunePageKey,
     type LolmixBuildPathStep,
@@ -325,7 +326,7 @@ const Recommendations: Component<{ data: LolmixAnalyzeResponse }> = (props) => {
         <div class="flex flex-col gap-3">
             <EnemyBar data={props.data} />
             <WarningBand data={props.data} />
-            <QuickDecisions data={props.data} />
+            <QuickDecisions data={props.data} dataset={dataset()} />
             <PhaseTabs
                 grouped={grouped()}
                 activePhase={activePhase()}
@@ -436,8 +437,13 @@ const WarningBand: Component<{ data: LolmixAnalyzeResponse }> = (props) => {
     );
 };
 
-const QuickDecisions: Component<{ data: LolmixAnalyzeResponse }> = (props) => {
-    const tiles = createMemo(() => quickDecisionTiles(props.data));
+const QuickDecisions: Component<{
+    data: LolmixAnalyzeResponse;
+    dataset: Dataset | undefined;
+}> = (props) => {
+    const tiles = createMemo(() =>
+        quickDecisionTiles(props.data, props.dataset),
+    );
 
     return (
         <Show when={tiles().length > 0}>
@@ -2128,7 +2134,30 @@ const EmptyState: Component<{ children: JSX.Element }> = (props) => (
     </div>
 );
 
-function quickDecisionTiles(data: LolmixAnalyzeResponse) {
+function lolmixRunePageKeystoneName(
+    raw: string,
+    data: LolmixAnalyzeResponse,
+    dataset: Dataset | undefined,
+) {
+    const readable = parseLolmixReadableRunePage(raw);
+    if (readable?.keystone) return readable.keystone;
+
+    const encoded = parseLolmixDisplayRunePageKey(raw);
+    const keystoneId = encoded?.primary[0];
+    if (keystoneId === undefined) return;
+
+    return (
+        dataset?.runeData[keystoneId]?.name ??
+        lolmixSectionByName(data, "keystones")?.entries.find(
+            (entry) => entry.id === keystoneId,
+        )?.name
+    );
+}
+
+function quickDecisionTiles(
+    data: LolmixAnalyzeResponse,
+    dataset: Dataset | undefined,
+) {
     const tiles: {
         label: string;
         value: string;
@@ -2153,11 +2182,12 @@ function quickDecisionTiles(data: LolmixAnalyzeResponse) {
         "combined_wr",
     );
     if (rune) {
+        const keystone = lolmixRunePageKeystoneName(rune.name, data, dataset);
         const page = parseLolmixReadableRunePage(rune.name);
         tiles.push({
-            label: "Keystone",
+            label: keystone ? "Keystone" : "Rune page",
             value:
-                page?.keystone ??
+                keystone ??
                 page?.primaryPathName ??
                 page?.kind ??
                 "Rune page",

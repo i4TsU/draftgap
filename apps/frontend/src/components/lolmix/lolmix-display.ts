@@ -576,6 +576,17 @@ export function parseLolmixRunePageKey(raw: string) {
     } satisfies LolmixRunePage;
 }
 
+export function parseLolmixDisplayRunePageKey(raw: string) {
+    const trimmed = raw.trim();
+    const encoded = parseLolmixRunePageKey(trimmed);
+    if (encoded) return encoded;
+
+    const kindMatch = /^(.*?)\s*Rune Page:\s*/i.exec(trimmed);
+    if (!kindMatch) return;
+
+    return parseLolmixRunePageKey(trimmed.slice(kindMatch[0].length).trim());
+}
+
 export function parseLolmixReadableRunePage(
     raw: string,
 ): LolmixReadableRunePage | undefined {
