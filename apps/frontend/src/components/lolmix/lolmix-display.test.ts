@@ -1,21 +1,38 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
-import type { LolmixAnalyzeResponse } from "../../api/lolmix-api";
+import type {
+    LolmixAnalyzeResponse,
+    LolmixRecommendationEntry,
+} from "../../api/lolmix-api";
 import {
     formatLolmixPercent,
     formatLolmixSignedPercent,
+    groupLolmixSections,
+    isLolmixRecommendationEligible,
+    lolmixBuildPathSteps,
+    lolmixCollapsedDisplayEntries,
+    lolmixDisplayEntries,
     lolmixHeadlineMetric,
+    lolmixRecommendedEntry,
     lolmixSectionTitle,
     lolmixSkillEarlyKey,
     lolmixSetupSteps,
     lolmixUnavailableSetupHint,
+    lolmixViableEntries,
     lolmixWarningLines,
+    parseLolmixDisplayRunePageKey,
+    parseLolmixReadableRunePage,
     parseLolmixRunePageKey,
+    sortedLolmixEntries,
     visibleLolmixEntries,
     visibleLolmixSections,
 } from "./lolmix-display";
 
-const entry = (id: number, section: string) => ({
+const entry = (
+    id: number,
+    section: string,
+    overrides: Partial<LolmixRecommendationEntry> = {},
+): LolmixRecommendationEntry => ({
     id,
     name: `${section} ${id}`,
     section,
@@ -30,6 +47,7 @@ const entry = (id: number, section: string) => ({
     max_delta: 0.04,
     total_n_max: 1600,
     per_matchup: {},
+    ...overrides,
 });
 
 const response: LolmixAnalyzeResponse = {
@@ -141,13 +159,58 @@ describe("lolmix display helpers", () => {
 
         expect(headline.label).toBe("Combined WR");
         expect(headline.value).toBe("54.1%");
+
+        const sorted = sortedLolmixEntries(
+            {
+                name: "winning_items",
+                entries: [
+                    { ...entry(1, "winning_items"), combined_wr: 0.49 },
+                    { ...entry(2, "winning_items"), combined_wr: 0.54 },
+                ],
+            },
+            "combined_wr",
+        );
+
+        expect(sorted.map((item) => item.id)).toEqual([2, 1]);
+    });
+
+    test("groups top-level sections by decision phase", () => {
+        const grouped = groupLolmixSections({
+            ...response,
+            sections_returned: [
+                "winning_items",
+                "starters",
+                "keystones",
+                "first_completed_item",
+            ],
+            sections: [
+                { name: "winning_items", entries: [entry(1, "winning_items")] },
+                { name: "starters", entries: [entry(2, "starters")] },
+                { name: "keystones", entries: [entry(3, "keystones")] },
+                {
+                    name: "first_completed_item",
+                    entries: [entry(4, "first_completed_item")],
+                },
+            ],
+        });
+
+        expect(grouped.now.map((section) => section.name)).toEqual([
+            "starters",
+        ]);
+        expect(grouped.core.map((section) => section.name)).toEqual([
+            "first_completed_item",
+        ]);
+        expect(grouped.matchup.map((section) => section.name)).toEqual([
+            "winning_items",
+        ]);
+        expect(grouped.details).toEqual([]);
     });
 
     test("parses skill cells and structured rune page keys", () => {
         expect(
             lolmixSkillEarlyKey({
                 ...response.sections[0].entries[0],
-                name: "L3 W",
+                name: "L 3 W",
             }),
         ).toEqual({ level: 3, slot: "W" });
 
@@ -162,6 +225,39 @@ describe("lolmix display helpers", () => {
             primary: [8112, 8139, 8140, 8106],
             secondary: [9105, 8017],
             shards: [5008, 5008, 5001],
+        });
+
+        expect(
+            parseLolmixDisplayRunePageKey(
+                "Most Picked Rune Page: rune_page:v2;kind=pick;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            ),
+        ).toEqual({
+            kind: "pick",
+            primaryPath: 1,
+            secondaryPath: 0,
+            primary: [8112, 8139, 8140, 8106],
+            secondary: [9105, 8017],
+            shards: [5008, 5008, 5001],
+        });
+    });
+
+    test("parses prose rune pages without exposing the raw key", () => {
+        const prose =
+            "Most Picked Rune Page: Precision \\u2014 Lethal Tempo + Absorb Life + Last Stand | Resolve \\u2014 Second Wind + Overgrowth | Shards: Attack Speed / Adaptive Force / Health Scaling".replace(
+                /\\u2014/g,
+                "\u2014",
+            );
+
+        expect(parseLolmixReadableRunePage(prose)).toEqual({
+            kind: "Most Picked",
+            primaryPathName: "Precision",
+            secondaryPathName: "Resolve",
+            primaryRunes: ["Lethal Tempo", "Absorb Life", "Last Stand"],
+            secondaryRunes: ["Second Wind", "Overgrowth"],
+            shards: ["Attack Speed", "Adaptive Force", "Health Scaling"],
+            keystone: "Lethal Tempo",
+            raw: prose,
+            encoded: false,
         });
     });
 
@@ -178,5 +274,126 @@ describe("lolmix display helpers", () => {
         expect(lolmixSetupSteps("127.0.0.1", 8765)).toContain(
             "Install or sync lolmix in its project environment.",
         );
+    });
+
+    test("applies the 0.01 percent PR floor to recommendations", () => {
+        const section = {
+            name: "summoners",
+            entries: [
+                entry(1, "summoners", {
+                    score: 0.2,
+                    combined_pr: 0.00009,
+                }),
+                entry(2, "summoners", {
+                    score: 0.01,
+                    combined_pr: 0.0001,
+                }),
+            ],
+        };
+
+        expect(isLolmixRecommendationEligible(section.entries[0])).toBe(false);
+        expect(isLolmixRecommendationEligible(section.entries[1])).toBe(true);
+        expect(lolmixRecommendedEntry(section)?.id).toBe(2);
+        expect(lolmixDisplayEntries(section)[0]).toMatchObject({
+            recommended: false,
+            rare: true,
+        });
+    });
+
+    test("uses min-p style pickrate pools for collapsed viable entries", () => {
+        const broad = {
+            name: "starters",
+            entries: [
+                entry(1, "starters", { score: 0.04, combined_pr: 0.4 }),
+                entry(2, "starters", { score: 0.03, combined_pr: 0.12 }),
+                entry(3, "starters", { score: 0.02, combined_pr: 0.05 }),
+                entry(4, "starters", { score: 0.01, combined_pr: 0.02 }),
+            ],
+        };
+        const narrow = {
+            name: "starters",
+            entries: [
+                entry(1, "starters", { score: 0.04, combined_pr: 0.8 }),
+                entry(2, "starters", { score: 0.03, combined_pr: 0.07 }),
+                entry(3, "starters", { score: 0.02, combined_pr: 0.05 }),
+            ],
+        };
+
+        expect(lolmixViableEntries(broad).map((item) => item.id)).toEqual([
+            1, 2, 3,
+        ]);
+        expect(lolmixViableEntries(narrow).map((item) => item.id)).toEqual([1]);
+    });
+
+    test("keeps rare returned options visible without recommending them", () => {
+        const section = {
+            name: "skill_order",
+            entries: [
+                entry(1, "skill_order", { combined_pr: 0.00009 }),
+                entry(2, "skill_order", { combined_pr: 0.00005 }),
+            ],
+        };
+        const collapsed = lolmixCollapsedDisplayEntries(section);
+
+        expect(lolmixRecommendedEntry(section)).toBeUndefined();
+        expect(collapsed.map((item) => item.entry.id)).toEqual([1, 2]);
+        expect(collapsed.every((item) => item.rare)).toBe(true);
+        expect(collapsed.every((item) => !item.recommended)).toBe(true);
+    });
+
+    test("preserves all returned entries for expanded display", () => {
+        const section = {
+            name: "full_build",
+            entries: Array.from({ length: 8 }, (_, index) =>
+                entry(index + 1, "full_build", {
+                    score: 0.08 - index * 0.005,
+                    combined_pr: 0.4 - index * 0.03,
+                }),
+            ),
+        };
+
+        expect(lolmixCollapsedDisplayEntries(section).length).toBeLessThan(8);
+        expect(lolmixDisplayEntries(section)).toHaveLength(8);
+    });
+
+    test("optimizes completed item paths without duplicate item recommendations", () => {
+        const steps = lolmixBuildPathSteps([
+            {
+                name: "first_completed_item",
+                entries: [
+                    entry(100, "first_completed_item", {
+                        score: 0.08,
+                        combined_pr: 0.7,
+                    }),
+                    entry(200, "first_completed_item", {
+                        score: 0.07,
+                        combined_pr: 0.12,
+                    }),
+                ],
+            },
+            {
+                name: "second_item",
+                entries: [
+                    entry(100, "second_item", {
+                        score: 0.14,
+                        combined_pr: 0.2,
+                    }),
+                    entry(300, "second_item", {
+                        score: 0.04,
+                        combined_pr: 0.18,
+                    }),
+                ],
+            },
+            {
+                name: "third_item",
+                entries: [entry(400, "third_item", { combined_pr: 0.2 })],
+            },
+        ]);
+        const recommended = steps
+            .map((step) => step.recommended?.id)
+            .filter((id): id is number => id !== undefined);
+
+        expect(recommended).toEqual([100, 300, 400]);
+        expect(new Set(recommended).size).toBe(recommended.length);
     });
 });

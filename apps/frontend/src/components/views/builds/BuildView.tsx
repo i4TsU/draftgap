@@ -12,7 +12,7 @@ export const BuildView: Component = () => {
     const { query, buildAnalysisResult } = useBuild();
 
     return (
-        <div class="flex flex-col gap-20">
+        <div class="flex flex-col gap-12">
             <LolmixRecommendationsPanel />
             <Switch>
                 <Match when={query.isLoading}>
@@ -26,7 +26,7 @@ export const BuildView: Component = () => {
                     </div>
                 </Match>
                 <Match when={query.isSuccess && buildAnalysisResult}>
-                    <div class="flex flex-col gap-20">
+                    <div class="flex flex-col gap-16">
                         <div class="flex flex-col gap-8">
                             <h2 class="uppercase text-2xl font-semibold leading-none text-center">
                                 Pre-game
