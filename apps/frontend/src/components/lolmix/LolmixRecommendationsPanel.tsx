@@ -52,6 +52,7 @@ import {
     lolmixUnavailableSetupHint,
     lolmixWarningLines,
     lolmixWinrateTextClass,
+    parseLolmixDisplayRunePageKey,
     parseLolmixReadableRunePage,
     parseLolmixRunePageKey,
     type LolmixBuildPathStep,
@@ -2141,7 +2142,7 @@ function lolmixRunePageKeystoneName(
     const readable = parseLolmixReadableRunePage(raw);
     if (readable?.keystone) return readable.keystone;
 
-    const encoded = parseLolmixRunePageKey(raw);
+    const encoded = parseLolmixDisplayRunePageKey(raw);
     const keystoneId = encoded?.primary[0];
     if (keystoneId === undefined) return;
 

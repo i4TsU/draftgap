@@ -20,6 +20,7 @@ import {
     lolmixUnavailableSetupHint,
     lolmixViableEntries,
     lolmixWarningLines,
+    parseLolmixDisplayRunePageKey,
     parseLolmixReadableRunePage,
     parseLolmixRunePageKey,
     sortedLolmixEntries,
@@ -216,6 +217,19 @@ describe("lolmix display helpers", () => {
         expect(
             parseLolmixRunePageKey(
                 "rune_page:v2;kind=pick;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            ),
+        ).toEqual({
+            kind: "pick",
+            primaryPath: 1,
+            secondaryPath: 0,
+            primary: [8112, 8139, 8140, 8106],
+            secondary: [9105, 8017],
+            shards: [5008, 5008, 5001],
+        });
+
+        expect(
+            parseLolmixDisplayRunePageKey(
+                "Most Picked Rune Page: rune_page:v2;kind=pick;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
             ),
         ).toEqual({
             kind: "pick",
