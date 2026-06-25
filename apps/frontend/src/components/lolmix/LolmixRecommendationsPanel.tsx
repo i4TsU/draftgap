@@ -2178,9 +2178,9 @@ function quickDecisionTiles(data: LolmixAnalyzeResponse) {
         });
     }
 
-    const firstItem = lolmixRecommendedEntry(
-        lolmixSectionByName(data, "first_completed_item"),
-    );
+    const firstItem = lolmixBuildPathSteps(data.sections).find(
+        (step) => step.section.name === "first_completed_item",
+    )?.recommended;
     if (firstItem) {
         tiles.push({
             label: "First item",
