@@ -14,6 +14,8 @@ import {
     lolmixDisplayEntries,
     lolmixHeadlineMetric,
     lolmixRecommendedEntry,
+    lolmixRunePageMetrics,
+    lolmixRunePageRecommendedEntry,
     lolmixSectionTitle,
     lolmixSkillEarlyKey,
     lolmixSetupSteps,
@@ -239,6 +241,81 @@ describe("lolmix display helpers", () => {
             secondary: [9105, 8017],
             shards: [5008, 5008, 5001],
         });
+    });
+
+    test("parses optimal rune pages and uses model-derived metric labels", () => {
+        const optimalKey =
+            "rune_page:v2;kind=optimal;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001";
+        const optimal = entry(10, "rune_page", {
+            name: optimalKey,
+            score: 0.034,
+            combined_wr: 0.501,
+            combined_pr: 0.123,
+            total_n_max: 45678,
+        });
+
+        expect(parseLolmixRunePageKey(optimalKey)?.kind).toBe("optimal");
+        expect(parseLolmixReadableRunePage(optimalKey)?.kind).toBe("Optimal");
+
+        expect(lolmixHeadlineMetric("rune_page", optimal)).toMatchObject({
+            label: "Score",
+            value: "+3.4%",
+        });
+        expect(lolmixRunePageMetrics(optimal)).toMatchObject({
+            mode: "optimal",
+            headlineLabel: "Score",
+            headlineValue: "+3.4%",
+            summary: "Score +3.4% / Coverage 12.3% / N 46k",
+        });
+
+        const fallback = entry(11, "rune_page", {
+            name: optimalKey.replace("kind=optimal", "kind=pick"),
+            score: 0.01,
+            combined_wr: 0.552,
+            combined_pr: 0.3,
+        });
+        expect(lolmixRunePageMetrics(fallback)).toMatchObject({
+            mode: "observed",
+            headlineLabel: "Win Rate",
+            headlineValue: "55.2%",
+            summary: "WR 55.2% / PR 30.0%",
+        });
+    });
+
+    test("selects optimal rune pages by score and fallback pages by win rate", () => {
+        const optimalLowWr = entry(1, "rune_page", {
+            name: "rune_page:v2;kind=optimal;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            score: 0.05,
+            combined_wr: 0.49,
+        });
+        const optimalHighWr = entry(2, "rune_page", {
+            name: "rune_page:v2;kind=optimal;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            score: 0.02,
+            combined_wr: 0.56,
+        });
+        const fallbackLowWr = entry(3, "rune_page", {
+            name: "rune_page:v2;kind=pick;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            score: 0.07,
+            combined_wr: 0.5,
+        });
+        const fallbackHighWr = entry(4, "rune_page", {
+            name: "rune_page:v2;kind=win;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
+            score: 0.01,
+            combined_wr: 0.54,
+        });
+
+        expect(
+            lolmixRunePageRecommendedEntry({
+                name: "rune_page",
+                entries: [optimalHighWr, optimalLowWr],
+            })?.id,
+        ).toBe(1);
+        expect(
+            lolmixRunePageRecommendedEntry({
+                name: "rune_page",
+                entries: [fallbackLowWr, fallbackHighWr],
+            })?.id,
+        ).toBe(4);
     });
 
     test("parses prose rune pages without exposing the raw key", () => {

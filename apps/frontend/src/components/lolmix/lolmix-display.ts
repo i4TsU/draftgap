@@ -7,6 +7,7 @@ import type {
 export type LolmixDecisionPhase = "now" | "core" | "matchup" | "details";
 
 export type LolmixHeadlineMetric = "score" | "combined_wr";
+export type LolmixRunePageKind = "pick" | "win" | "optimal";
 type LolmixCompletedItemSection =
     | "first_completed_item"
     | "second_item"
@@ -175,6 +176,14 @@ export type LolmixDisplayEntry = {
     rare: boolean;
 };
 
+export type LolmixRunePageMetrics = {
+    mode: "optimal" | "observed";
+    headlineLabel: "Score" | "Win Rate";
+    headlineValue: string;
+    headlineClass: string;
+    summary: string;
+};
+
 export type LolmixBuildPathStep = {
     section: LolmixRecommendationSection;
     recommended: LolmixRecommendationEntry | undefined;
@@ -188,7 +197,7 @@ export type LolmixGroupedSections = Record<
 >;
 
 export type LolmixRunePage = {
-    kind: "pick" | "win" | undefined;
+    kind: LolmixRunePageKind | undefined;
     primaryPath: number | undefined;
     secondaryPath: number | undefined;
     primary: number[];
@@ -295,6 +304,28 @@ export function lolmixTopEntry(
         lolmixRecommendedEntry(section, headline) ??
         sortedLolmixEntries(section, headline)[0]
     );
+}
+
+export function lolmixRunePageHeadline(
+    section: LolmixRecommendationSection | undefined,
+): LolmixHeadlineMetric {
+    return section?.entries.some(isLolmixOptimalRunePage)
+        ? "score"
+        : "combined_wr";
+}
+
+export function lolmixRunePageRecommendedEntry(
+    section: LolmixRecommendationSection | undefined,
+) {
+    return lolmixRecommendedEntry(section, lolmixRunePageHeadline(section));
+}
+
+export function lolmixRunePageDisplayEntries(
+    section: LolmixRecommendationSection,
+) {
+    return lolmixDisplayEntries(section, {
+        headline: lolmixRunePageHeadline(section),
+    });
 }
 
 export function sortedLolmixEntries(
@@ -452,6 +483,15 @@ export function lolmixHeadlineMetric(
     sectionName: string,
     entry: LolmixRecommendationEntry,
 ) {
+    if (sectionName === "rune_page") {
+        const metrics = lolmixRunePageMetrics(entry);
+        return {
+            label: metrics.headlineLabel,
+            value: metrics.headlineValue,
+            class: metrics.headlineClass,
+        };
+    }
+
     if (lolmixSectionMeta(sectionName).headline === "combined_wr") {
         return {
             label: "Combined WR",
@@ -524,6 +564,28 @@ export function formatLolmixCompactCount(value: number | undefined) {
     return `${(value / 1000000).toFixed(1)}m`;
 }
 
+export function lolmixRunePageMetrics(
+    entry: LolmixRecommendationEntry,
+): LolmixRunePageMetrics {
+    if (isLolmixOptimalRunePage(entry)) {
+        return {
+            mode: "optimal",
+            headlineLabel: "Score",
+            headlineValue: formatLolmixSignedPercent(entry.score),
+            headlineClass: lolmixScoreClass(entry.score),
+            summary: `Score ${formatLolmixSignedPercent(entry.score)} / Coverage ${formatLolmixPercent(entry.combined_pr)} / N ${formatLolmixCompactCount(entry.total_n_max)}`,
+        };
+    }
+
+    return {
+        mode: "observed",
+        headlineLabel: "Win Rate",
+        headlineValue: formatLolmixPercent(entry.combined_wr),
+        headlineClass: lolmixWinrateClass(entry.combined_wr),
+        summary: `WR ${formatLolmixPercent(entry.combined_wr)} / PR ${formatLolmixPercent(entry.combined_pr)}`,
+    };
+}
+
 export function lolmixWarningLines(data: LolmixAnalyzeResponse) {
     return data.warnings.map(
         (warning) =>
@@ -567,13 +629,17 @@ export function parseLolmixRunePageKey(raw: string) {
 
     const kind = fields.get("kind");
     return {
-        kind: kind === "pick" || kind === "win" ? kind : undefined,
+        kind: isLolmixRunePageKind(kind) ? kind : undefined,
         primaryPath: optionalLolmixInt(fields.get("pri_path")),
         secondaryPath: optionalLolmixInt(fields.get("sec_path")),
         primary: splitLolmixInts(fields.get("primary")),
         secondary: splitLolmixInts(fields.get("secondary")),
         shards: splitLolmixInts(fields.get("shards")),
     } satisfies LolmixRunePage;
+}
+
+export function isLolmixOptimalRunePage(entry: LolmixRecommendationEntry) {
+    return parseLolmixDisplayRunePageKey(entry.name)?.kind === "optimal";
 }
 
 export function parseLolmixDisplayRunePageKey(raw: string) {
@@ -849,8 +915,21 @@ function splitLolmixInts(value: string | undefined) {
         .filter((part) => Number.isInteger(part));
 }
 
-function runePageKindLabel(kind: "pick" | "win") {
-    return kind === "pick" ? "Most Picked" : "Highest Win";
+function isLolmixRunePageKind(
+    value: string | undefined,
+): value is LolmixRunePageKind {
+    return value === "pick" || value === "win" || value === "optimal";
+}
+
+function runePageKindLabel(kind: LolmixRunePageKind) {
+    switch (kind) {
+        case "pick":
+            return "Most Picked";
+        case "win":
+            return "Highest Win";
+        case "optimal":
+            return "Optimal";
+    }
 }
 
 function emptyReadableRunePage(

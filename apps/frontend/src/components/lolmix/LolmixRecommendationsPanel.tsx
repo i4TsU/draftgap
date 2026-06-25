@@ -41,6 +41,9 @@ import {
     lolmixLaneLabel,
     lolmixLaneMatchup,
     lolmixRecommendedEntry,
+    lolmixRunePageDisplayEntries,
+    lolmixRunePageMetrics,
+    lolmixRunePageRecommendedEntry,
     lolmixSampleConfidence,
     lolmixScoreClass,
     lolmixScoreToneClass,
@@ -836,7 +839,7 @@ const RunePageSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
     const entries = createMemo(() =>
-        lolmixDisplayEntries(props.section, { headline: "combined_wr" }),
+        lolmixRunePageDisplayEntries(props.section),
     );
     const [selectedIndex, setSelectedIndex] = createSignal<number>();
     const activeIndex = () => {
@@ -904,6 +907,7 @@ const RunePageDetail: Component<{
 }> = (props) => {
     const readable = () => parseLolmixReadableRunePage(props.entry.name);
     const encoded = () => parseLolmixRunePageKey(props.entry.name);
+    const metrics = () => lolmixRunePageMetrics(props.entry);
     const hasReadableRunes = () => {
         const page = readable();
         return !!(
@@ -920,18 +924,40 @@ const RunePageDetail: Component<{
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-baseline gap-2">
                     <span class="text-[10px] uppercase tracking-wide text-neutral-500">
-                        Win Rate
+                        {metrics().headlineLabel}
                     </span>
-                    <span class="text-lg font-semibold tabular-nums text-neutral-100">
-                        {formatLolmixPercent(props.entry.combined_wr)}
+                    <span
+                        class={cn(
+                            "text-lg font-semibold tabular-nums",
+                            metrics().headlineClass,
+                        )}
+                    >
+                        {metrics().headlineValue}
                     </span>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-xs uppercase text-neutral-500">
-                        PR {formatLolmixPercent(props.entry.combined_pr)}
-                    </span>
-                    <ScoreChip value={props.entry.score} />
-                    <SamplePill value={props.entry.total_n_max} />
+                    <Switch>
+                        <Match when={metrics().mode === "optimal"}>
+                            <span class="text-xs uppercase text-neutral-500">
+                                Coverage{" "}
+                                {formatLolmixPercent(props.entry.combined_pr)}
+                            </span>
+                            <span class="text-xs uppercase text-neutral-500">
+                                N{" "}
+                                {formatLolmixCompactCount(
+                                    props.entry.total_n_max,
+                                )}
+                            </span>
+                        </Match>
+                        <Match when={true}>
+                            <span class="text-xs uppercase text-neutral-500">
+                                PR{" "}
+                                {formatLolmixPercent(props.entry.combined_pr)}
+                            </span>
+                            <ScoreChip value={props.entry.score} />
+                            <SamplePill value={props.entry.total_n_max} />
+                        </Match>
+                    </Switch>
                 </div>
             </div>
 
@@ -2177,9 +2203,8 @@ function quickDecisionTiles(
         });
     }
 
-    const rune = lolmixRecommendedEntry(
+    const rune = lolmixRunePageRecommendedEntry(
         lolmixSectionByName(data, "rune_page"),
-        "combined_wr",
     );
     if (rune) {
         const keystone = lolmixRunePageKeystoneName(rune.name, data, dataset);
@@ -2187,11 +2212,8 @@ function quickDecisionTiles(
         tiles.push({
             label: keystone ? "Keystone" : "Rune page",
             value:
-                keystone ??
-                page?.primaryPathName ??
-                page?.kind ??
-                "Rune page",
-            sub: `WR ${formatLolmixPercent(rune.combined_wr)} / PR ${formatLolmixPercent(rune.combined_pr)}`,
+                keystone ?? page?.primaryPathName ?? page?.kind ?? "Rune page",
+            sub: lolmixRunePageMetrics(rune).summary,
             score: rune.score,
         });
     }
