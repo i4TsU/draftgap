@@ -4,13 +4,17 @@ import type { Team } from "@draftgap/core/src/models/Team";
 
 export const LOLMIX_DEFAULT_PORT = 8765;
 export const LOLMIX_DEFAULT_HOST = "127.0.0.1";
-export const LOLMIX_DEFAULT_TIER = "emerald_plus";
+export const LOLMIX_DEFAULT_TIER = "all";
 export const LOLMIX_DEFAULT_PATCH = "30";
 export const LOLMIX_DEFAULT_TOP_N = 8;
 
 export const LOLMIX_RECOMMENDATION_SECTIONS = [
     "summoners",
     "rune_page",
+    "keystones",
+    "runes_primary",
+    "runes_secondary",
+    "stat_shards",
     "skill_early",
     "starters",
     "first_completed_item",
@@ -191,6 +195,7 @@ export type LolmixDraftRequestInput = {
     dataset: Dataset | undefined;
     tier?: string;
     patch?: string;
+    useCache?: boolean;
 };
 
 export type LolmixDraftRequestResult =
@@ -470,7 +475,7 @@ export function buildLolmixAnalyzeRequest(
             patch: input.patch ?? LOLMIX_DEFAULT_PATCH,
             top_n: LOLMIX_DEFAULT_TOP_N,
             sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
-            use_cache: true,
+            use_cache: input.useCache ?? true,
         },
         championKey: pick.championKey,
         championName: champion.name,

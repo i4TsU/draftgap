@@ -62,6 +62,7 @@ export function createLolmixContext() {
             allyTeamComp: allyTeamComp(),
             opponentTeamComp: opponentTeamComp(),
             dataset: dataset(),
+            useCache: config.lolmixUseCache,
         }),
     );
 

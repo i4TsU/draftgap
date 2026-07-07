@@ -72,9 +72,20 @@ type Props = {
     onRefresh?: () => void;
 };
 
-type RuneRecord = Dataset["runeData"][number];
 type RunePathRecord = Dataset["runePathData"][number];
 type StatShardRecord = Dataset["statShardData"][number];
+
+type SelectedRuneMetric = {
+    id: number;
+    name: string;
+    entry: LolmixRecommendationEntry | undefined;
+};
+
+type SelectedShardMetric = {
+    slot: number;
+    shard: StatShardRecord;
+    entry: LolmixRecommendationEntry | undefined;
+};
 
 const RUNE_PATH_ORDER = [8000, 8100, 8200, 8400, 8300] as const;
 const SHARD_SLOT_LABELS = ["Offense", "Flex", "Defense"] as const;
@@ -490,39 +501,49 @@ const PhaseTabs: Component<{
     grouped: ReturnType<typeof groupLolmixSections>;
     activePhase: LolmixDecisionPhase;
     onSelect: (phase: LolmixDecisionPhase) => void;
-}> = (props) => (
-    <div class="grid grid-cols-2 gap-1 rounded-md bg-neutral-950/40 p-1 lg:grid-cols-4">
-        <For each={LOLMIX_PHASES}>
-            {(item) => {
-                const count = () => props.grouped[item.id].length;
-                const disabled = () => count() === 0;
+}> = (props) => {
+    const visiblePhases = createMemo(() =>
+        LOLMIX_PHASES.filter(
+            (item) =>
+                props.grouped[item.id].length > 0 ||
+                props.activePhase === item.id,
+        ),
+    );
 
-                return (
-                    <button
-                        type="button"
-                        disabled={disabled()}
-                        class={cn(
-                            "rounded px-2 py-1.5 text-center transition",
-                            props.activePhase === item.id
-                                ? "bg-neutral-700 text-neutral-100"
-                                : disabled()
-                                  ? "text-neutral-700"
-                                  : "text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200",
-                        )}
-                        onClick={() => props.onSelect(item.id)}
-                    >
-                        <span class="block text-xs font-semibold">
-                            {item.label}
-                        </span>
-                        <span class="block text-[10px] uppercase tracking-wider opacity-70">
-                            {item.kicker}
-                        </span>
-                    </button>
-                );
-            }}
-        </For>
-    </div>
-);
+    return (
+        <div class="grid grid-cols-1 gap-1 rounded-md bg-neutral-950/40 p-1 sm:grid-cols-3 xl:grid-cols-4">
+            <For each={visiblePhases()}>
+                {(item) => {
+                    const count = () => props.grouped[item.id].length;
+                    const disabled = () => count() === 0;
+
+                    return (
+                        <button
+                            type="button"
+                            disabled={disabled()}
+                            class={cn(
+                                "rounded px-2 py-1.5 text-center transition",
+                                props.activePhase === item.id
+                                    ? "bg-neutral-700 text-neutral-100"
+                                    : disabled()
+                                      ? "text-neutral-700"
+                                      : "text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200",
+                            )}
+                            onClick={() => props.onSelect(item.id)}
+                        >
+                            <span class="block text-xs font-semibold">
+                                {item.label}
+                            </span>
+                            <span class="block text-[10px] uppercase tracking-wider opacity-70">
+                                {item.kicker}
+                            </span>
+                        </button>
+                    );
+                }}
+            </For>
+        </div>
+    );
+};
 
 const PhaseContent: Component<{
     data: LolmixAnalyzeResponse;
@@ -1846,198 +1867,204 @@ const RuneMetricsBoard: Component<{
     const primary = createMemo(() => entryMap(entriesFor("runes_primary")));
     const secondary = createMemo(() => entryMap(entriesFor("runes_secondary")));
     const shards = () => entriesFor("stat_shards");
-    const paths = createMemo(() => orderedRunePaths(props.dataset));
-    const hasMetrics = () =>
-        keystones().size > 0 ||
-        primary().size > 0 ||
-        secondary().size > 0 ||
-        shards().length > 0;
+    const selectedPrimaryPath = createMemo(() =>
+        runePathByIndex(props.dataset, props.selectedPage?.primaryPath),
+    );
+    const selectedSecondaryPath = createMemo(() =>
+        runePathByIndex(props.dataset, props.selectedPage?.secondaryPath),
+    );
+    const selectedPrimaryRunes = createMemo(() => {
+        const keystoneEntries = keystones();
+        const primaryEntries = primary();
+        return selectedRuneMetrics(
+            props.dataset,
+            props.selectedPage?.primary ?? [],
+            (id) => keystoneEntries.get(id) ?? primaryEntries.get(id),
+        );
+    });
+    const selectedSecondaryRunes = createMemo(() => {
+        const secondaryEntries = secondary();
+        return selectedRuneMetrics(
+            props.dataset,
+            props.selectedPage?.secondary ?? [],
+            (id) => secondaryEntries.get(id),
+        );
+    });
+    const selectedShardRows = createMemo<SelectedShardMetric[]>(() => {
+        const selected = props.selectedPage?.shards ?? [];
+        const rows: SelectedShardMetric[] = [];
+
+        for (let slot = 0; slot < 3; slot += 1) {
+            const shardId = selected[slot];
+            if (shardId === undefined) continue;
+
+            const shard =
+                statShardOptions(props.dataset, slot).find(
+                    (candidate) => candidate.id === shardId,
+                ) ?? props.dataset.statShardData[shardId];
+            if (!shard) continue;
+
+            rows.push({
+                slot,
+                shard,
+                entry: statShardEntry(shards(), slot, shard.name),
+            });
+        }
+
+        return rows;
+    });
+    const hasSelectedPage = () =>
+        selectedPrimaryRunes().length > 0 ||
+        selectedSecondaryRunes().length > 0 ||
+        selectedShardRows().length > 0;
 
     return (
         <Show
-            when={hasMetrics()}
+            when={hasSelectedPage()}
             fallback={
                 <div class="rounded-md border border-dashed border-neutral-800 px-3 py-4 text-center text-xs uppercase text-neutral-600">
-                    Detailed rune metric sections were not returned.
+                    Selected rune details were not returned.
                 </div>
             }
         >
-            <div class="flex flex-col gap-4">
-                <RunePathGrid
-                    dataset={props.dataset}
-                    entriesForRune={(rune) =>
-                        rune.slot === 0
-                            ? keystones().get(rune.id)
-                            : primary().get(rune.id)
-                    }
-                    paths={paths()}
-                    selected={(path, rune) => {
-                        const page = props.selectedPage;
-                        if (!page) return false;
-                        return (
-                            page.primaryPath === runePathIndex(path.id) &&
-                            page.primary.includes(rune.id)
-                        );
-                    }}
-                    title="Primary Path"
+            <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+                <SelectedRunePathSummary
+                    label="Primary"
+                    path={selectedPrimaryPath()}
+                    runes={selectedPrimaryRunes()}
                 />
-                <RunePathGrid
-                    dataset={props.dataset}
-                    entriesForRune={(rune) => secondary().get(rune.id)}
-                    paths={paths()}
-                    selected={(path, rune) => {
-                        const page = props.selectedPage;
-                        if (!page) return false;
-                        return (
-                            page.secondaryPath === runePathIndex(path.id) &&
-                            page.secondary.includes(rune.id)
-                        );
-                    }}
-                    skipKeystones
-                    title="Secondary Path"
-                />
-                <StatShardGrid
-                    dataset={props.dataset}
-                    entries={shards()}
-                    selectedShards={props.selectedPage?.shards}
-                />
+                <div class="grid grid-cols-1 gap-3">
+                    <SelectedRunePathSummary
+                        label="Secondary"
+                        path={selectedSecondaryPath()}
+                        runes={selectedSecondaryRunes()}
+                    />
+                    <SelectedStatShardSummary rows={selectedShardRows()} />
+                </div>
             </div>
         </Show>
     );
 };
 
-const RunePathGrid: Component<{
-    dataset: Dataset;
-    entriesForRune: (rune: RuneRecord) => LolmixRecommendationEntry | undefined;
-    paths: RunePathRecord[];
-    selected: (path: RunePathRecord, rune: RuneRecord) => boolean;
-    skipKeystones?: boolean;
-    title: string;
+const SelectedRunePathSummary: Component<{
+    label: string;
+    path: RunePathRecord | undefined;
+    runes: SelectedRuneMetric[];
 }> = (props) => (
-    <div>
-        <div class="mb-2 text-xs uppercase text-neutral-400">{props.title}</div>
-        <div class="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            <For each={props.paths}>
-                {(path) => (
-                    <div class="border border-neutral-800 p-2">
-                        <div class="mb-2 text-xs uppercase text-neutral-300">
-                            {path.name}
-                        </div>
-                        <div class="flex flex-col gap-1">
-                            <For
-                                each={runeSlotsForPath(
-                                    path.id,
-                                    props.dataset,
-                                    props.skipKeystones,
-                                )}
-                            >
-                                {(slot) => (
-                                    <div
-                                        class={cn("grid gap-1", {
-                                            "grid-cols-4": slot.length === 4,
-                                            "grid-cols-3": slot.length !== 4,
-                                        })}
-                                    >
-                                        <For each={slot}>
-                                            {(rune) => (
-                                                <RuneMetricCell
-                                                    entry={props.entriesForRune(
-                                                        rune,
-                                                    )}
-                                                    name={rune.name}
-                                                    selected={props.selected(
-                                                        path,
-                                                        rune,
-                                                    )}
-                                                />
-                                            )}
-                                        </For>
-                                    </div>
-                                )}
-                            </For>
-                        </div>
-                    </div>
-                )}
-            </For>
-        </div>
-    </div>
-);
-
-const StatShardGrid: Component<{
-    dataset: Dataset;
-    entries: LolmixRecommendationEntry[];
-    selectedShards: number[] | undefined;
-}> = (props) => (
-    <div>
-        <div class="mb-2 text-xs uppercase text-neutral-400">Stat Shards</div>
-        <div class="grid gap-3 md:grid-cols-3">
-            <For each={[0, 1, 2] as const}>
-                {(slot) => (
-                    <div class="border border-neutral-800 p-2">
-                        <div class="mb-2 text-xs uppercase text-neutral-300">
-                            {SHARD_SLOT_LABELS[slot]}
-                        </div>
-                        <div class="grid grid-cols-3 gap-1">
-                            <For each={statShardOptions(props.dataset, slot)}>
-                                {(shard) => (
-                                    <RuneMetricCell
-                                        entry={statShardEntry(
-                                            props.entries,
-                                            slot,
-                                            shard.name,
-                                        )}
-                                        name={shard.name}
-                                        selected={
-                                            props.selectedShards?.[slot] ===
-                                            shard.id
-                                        }
-                                    />
-                                )}
-                            </For>
-                        </div>
-                    </div>
-                )}
-            </For>
-        </div>
-    </div>
-);
-
-const RuneMetricCell: Component<{
-    entry: LolmixRecommendationEntry | undefined;
-    name: string;
-    selected?: boolean;
-}> = (props) => (
-    <div
-        class={cn(
-            "min-h-24 overflow-hidden border border-neutral-800 p-2",
-            props.selected && "border-winrate-good bg-winrate-good/10",
-        )}
-        title={props.name}
-    >
-        <div class="min-h-8 text-xs font-semibold leading-tight text-neutral-100">
-            {props.name}
+    <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2">
+        <div class="mb-2 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span class="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                {props.label}
+            </span>
+            <span class="min-w-0 truncate text-xs font-semibold text-neutral-200">
+                {props.path?.name ?? "Unknown path"}
+            </span>
         </div>
         <Show
-            when={props.entry}
-            fallback={<div class="text-xs uppercase text-neutral-600">-</div>}
+            when={props.runes.length > 0}
+            fallback={
+                <div class="rounded border border-dashed border-neutral-800 px-2 py-2 text-xs uppercase text-neutral-600">
+                    No selected runes
+                </div>
+            }
         >
-            {(entry) => (
-                <>
-                    <div
+            <div class="grid grid-cols-1 gap-1.5">
+                <For each={props.runes}>
+                    {(rune, index) => (
+                        <RuneMetricRow
+                            badge={
+                                props.label === "Primary" && index() === 0
+                                    ? "Keystone"
+                                    : undefined
+                            }
+                            entry={rune.entry}
+                            name={rune.name}
+                        />
+                    )}
+                </For>
+            </div>
+        </Show>
+    </div>
+);
+
+const SelectedStatShardSummary: Component<{
+    rows: SelectedShardMetric[];
+}> = (props) => (
+    <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2">
+        <div class="mb-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+            Stat shards
+        </div>
+        <Show
+            when={props.rows.length > 0}
+            fallback={
+                <div class="rounded border border-dashed border-neutral-800 px-2 py-2 text-xs uppercase text-neutral-600">
+                    No selected shards
+                </div>
+            }
+        >
+            <div class="grid grid-cols-1 gap-1.5">
+                <For each={props.rows}>
+                    {(row) => (
+                        <RuneMetricRow
+                            badge={SHARD_SLOT_LABELS[row.slot]}
+                            entry={row.entry}
+                            name={row.shard.name}
+                        />
+                    )}
+                </For>
+            </div>
+        </Show>
+    </div>
+);
+
+const RuneMetricRow: Component<{
+    badge: string | undefined;
+    entry: LolmixRecommendationEntry | undefined;
+    name: string;
+}> = (props) => (
+    <div
+        class="min-w-0 rounded border border-neutral-800 bg-neutral-950/40 px-2 py-1.5"
+        title={props.name}
+    >
+        <div class="flex min-w-0 items-start justify-between gap-2">
+            <div class="min-w-0">
+                <div class="truncate text-xs font-semibold leading-tight text-neutral-100">
+                    {props.name}
+                </div>
+                <Show when={props.badge}>
+                    {(badge) => (
+                        <div class="mt-0.5 text-[10px] uppercase text-neutral-500">
+                            {badge()}
+                        </div>
+                    )}
+                </Show>
+            </div>
+            <Show
+                when={props.entry}
+                fallback={
+                    <span class="shrink-0 text-[10px] uppercase text-neutral-600">
+                        No metric
+                    </span>
+                }
+            >
+                {(entry) => (
+                    <span
                         class={cn(
-                            "text-xs uppercase",
+                            "shrink-0 text-xs font-semibold uppercase tabular-nums",
                             lolmixWinrateTextClass(entry().combined_wr),
                         )}
                     >
                         WR {formatLolmixPercent(entry().combined_wr)}
-                    </div>
-                    <div class="text-xs uppercase text-neutral-400">
-                        PR {formatLolmixPercent(entry().combined_pr)}
-                    </div>
-                    <div class="text-xs uppercase text-neutral-600">
-                        N {formatLolmixCompactCount(entry().total_n_max)}
-                    </div>
-                </>
+                    </span>
+                )}
+            </Show>
+        </div>
+        <Show when={props.entry}>
+            {(entry) => (
+                <div class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] uppercase text-neutral-500">
+                    <span>PR {formatLolmixPercent(entry().combined_pr)}</span>
+                    <span>N {formatLolmixCompactCount(entry().total_n_max)}</span>
+                </div>
             )}
         </Show>
     </div>
@@ -2287,31 +2314,33 @@ function entryMap(entries: LolmixRecommendationEntry[]) {
     return new Map(entries.map((entry) => [entry.id, entry]));
 }
 
-function orderedRunePaths(dataset: Dataset) {
-    const paths = Object.values(dataset.runePathData);
-    return [
-        ...RUNE_PATH_ORDER.map((id) => paths.find((path) => path.id === id)),
-        ...paths
-            .filter(
-                (path) => !RUNE_PATH_ORDER.some((pathId) => pathId === path.id),
-            )
-            .sort((left, right) => left.id - right.id),
-    ].filter((path): path is RunePathRecord => !!path);
+function selectedRuneMetrics(
+    dataset: Dataset,
+    ids: number[],
+    entryForId: (id: number) => LolmixRecommendationEntry | undefined,
+) {
+    return ids.map((id) => ({
+        id,
+        name: dataset.runeData[id]?.name ?? entryForId(id)?.name ?? String(id),
+        entry: entryForId(id),
+    }));
 }
 
-function runeSlotsForPath(
-    pathId: number,
+function runePathByIndex(
     dataset: Dataset,
-    skipKeystones?: boolean,
-) {
-    return [0, 1, 2, 3]
-        .filter((slot) => !(skipKeystones && slot === 0))
-        .map((slot) =>
-            Object.values(dataset.runeData)
-                .filter((rune) => rune.pathId === pathId && rune.slot === slot)
-                .sort((left, right) => left.index - right.index),
-        )
-        .filter((slot) => slot.length > 0);
+    pathIndex: number | undefined,
+): RunePathRecord | undefined {
+    if (pathIndex === undefined) return undefined;
+
+    const knownPathId = RUNE_PATH_ORDER[pathIndex];
+    if (knownPathId !== undefined) return dataset.runePathData[knownPathId];
+
+    return (
+        dataset.runePathData[pathIndex] ??
+        Object.values(dataset.runePathData)
+            .sort((left, right) => left.id - right.id)
+            .at(pathIndex)
+    );
 }
 
 function statShardOptions(dataset: Dataset, slot: number) {
@@ -2345,11 +2374,4 @@ function statShardEntry(
         const name = entry.name.toLowerCase();
         return name.includes(slotLabel) && name.includes(normalizedShardName);
     });
-}
-
-function runePathIndex(pathId: number) {
-    const index = RUNE_PATH_ORDER.findIndex(
-        (candidate) => candidate === pathId,
-    );
-    return index >= 0 ? index : undefined;
 }

@@ -4,8 +4,9 @@
 )]
 #[cfg(target_os = "windows")]
 use std::path::PathBuf;
+use std::time::Duration;
 
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde::Serialize;
 use serde_json::Value;
 use tauri::async_runtime::Mutex;
@@ -207,6 +208,54 @@ async fn get_lcu_response(
 }
 
 #[tauri::command]
+async fn fetch_lolalytics_page(
+    state: tauri::State<'_, AppState>,
+    url: String,
+) -> Result<String, String> {
+    let parsed = Url::parse(&url).map_err(|e| format!("Invalid Lolalytics URL: {e}"))?;
+    if parsed.scheme() != "https"
+        || parsed.host_str() != Some("lolalytics.com")
+        || !parsed.path().starts_with("/lol/")
+    {
+        return Err("Only https://lolalytics.com/lol/... pages can be fetched".to_owned());
+    }
+
+    let res = state
+        .client
+        .get(parsed)
+        .header(
+            "user-agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        )
+        .header(
+            "accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        )
+        .header("accept-language", "en-US,en;q=0.9")
+        .header("referer", "https://lolalytics.com/")
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|e| format!("Could not fetch Lolalytics page: {e}"))?;
+
+    let status = res.status();
+    let body = res
+        .text()
+        .await
+        .map_err(|e| format!("Could not read Lolalytics response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "Lolalytics returned {status}: {}",
+            body.chars().take(300).collect::<String>()
+        ));
+    }
+
+    Ok(body)
+}
+
+#[tauri::command]
 async fn get_champ_select_session(
     state: tauri::State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
@@ -246,6 +295,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
+            fetch_lolalytics_page,
             get_champ_select_session,
             get_current_summoner,
             get_grid_champions,

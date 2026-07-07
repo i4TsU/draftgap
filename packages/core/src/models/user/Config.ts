@@ -33,4 +33,5 @@ export type DraftGapConfig = {
     // LOLMIX
     lolmixServerHost: string;
     lolmixServerPort: number;
+    lolmixUseCache: boolean;
 };

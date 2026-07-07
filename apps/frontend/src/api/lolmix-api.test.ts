@@ -170,7 +170,7 @@ describe("buildLolmixAnalyzeRequest", () => {
                 { champion_id: 122, lane: "top" },
                 { champion_id: 238, lane: "middle" },
             ],
-            tier: "emerald_plus",
+            tier: "all",
             patch: "30",
             top_n: LOLMIX_DEFAULT_TOP_N,
             sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
@@ -178,10 +178,14 @@ describe("buildLolmixAnalyzeRequest", () => {
         });
     });
 
-    test("requests the lolmix GUI-visible recommendation sections", () => {
+    test("requests visible recommendations and rune backing metric sections", () => {
         expect([...LOLMIX_RECOMMENDATION_SECTIONS]).toEqual([
             "summoners",
             "rune_page",
+            "keystones",
+            "runes_primary",
+            "runes_secondary",
+            "stat_shards",
             "skill_early",
             "starters",
             "first_completed_item",
@@ -193,10 +197,6 @@ describe("buildLolmixAnalyzeRequest", () => {
             "skill_order",
             "full_build",
         ]);
-        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("keystones");
-        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("runes_primary");
-        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("runes_secondary");
-        expect(LOLMIX_RECOMMENDATION_SECTIONS).not.toContain("stat_shards");
     });
 
     test("does not send hover-only opponent champions", () => {
@@ -262,7 +262,7 @@ describe("fetchLolmixRecommendations", () => {
                 my_champion_id: 157,
                 my_lane: "middle",
                 enemies: [],
-                tier: "emerald_plus",
+                tier: "all",
                 patch: "30",
                 top_n: LOLMIX_DEFAULT_TOP_N,
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
@@ -283,7 +283,7 @@ describe("fetchLolmixRecommendations", () => {
                 my_champion_id: 157,
                 my_lane: "middle",
                 enemies: [{ champion_id: 122, lane: "top" }],
-                tier: "emerald_plus",
+                tier: "all",
                 patch: "30",
                 top_n: LOLMIX_DEFAULT_TOP_N,
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],
@@ -310,7 +310,7 @@ describe("fetchLolmixRecommendations", () => {
                 my_champion_id: 157,
                 my_lane: "middle",
                 enemies: [],
-                tier: "emerald_plus",
+                tier: "all",
                 patch: "30",
                 top_n: LOLMIX_DEFAULT_TOP_N,
                 sections: [...LOLMIX_RECOMMENDATION_SECTIONS],

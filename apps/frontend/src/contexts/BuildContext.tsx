@@ -19,6 +19,7 @@ import { BuildEntity } from "@draftgap/core/src/models/build/BuildEntity";
 import { useDraftAnalysis } from "./DraftAnalysisContext";
 import { useDataset } from "./DatasetContext";
 import { useDraftView } from "./DraftViewContext";
+import { fetchLolalyticsPageText } from "../api/lolalytics-api";
 
 export function createBuildContext() {
     const { allyTeam, opponentTeam } = useDraft();
@@ -114,6 +115,9 @@ export function createBuildContext() {
             if (championKey() === undefined || !theirTeamComp() || !dataset()) {
                 return null;
             }
+            if (championRole() === undefined) {
+                return null;
+            }
 
             const cached = queryClient.getQueryCache().find({
                 queryKey: ctx.queryKey,
@@ -131,6 +135,7 @@ export function createBuildContext() {
                 championKey()!,
                 championRole()!,
                 theirTeamComp()!,
+                { fetchText: fetchLolalyticsPageText },
             );
         },
         refetchInterval: false,

@@ -80,7 +80,7 @@ export const DraftSummaryCards = (
     const { allyDraftAnalysis, opponentDraftAnalysis } = useDraftAnalysis();
 
     const draftResult = () =>
-        props.team === "ally" ? allyDraftAnalysis()! : opponentDraftAnalysis()!;
+        props.team === "ally" ? allyDraftAnalysis() : opponentDraftAnalysis();
 
     const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -96,7 +96,7 @@ export const DraftSummaryCards = (
                 team={props.team}
                 icon={user}
                 title="Champions"
-                rating={draftResult().allyChampionRating.totalRating}
+                rating={draftResult()?.allyChampionRating.totalRating}
                 href="#champions-result"
                 tooltip={
                     <>
@@ -109,7 +109,7 @@ export const DraftSummaryCards = (
                 team={props.team}
                 icon={arrowsRightLeft}
                 title="Matchups"
-                rating={draftResult().matchupRating.totalRating}
+                rating={draftResult()?.matchupRating.totalRating}
                 href="#matchup-result"
                 tooltip={
                     <>
@@ -122,7 +122,7 @@ export const DraftSummaryCards = (
                 team={props.team}
                 icon={users}
                 title="Duos"
-                rating={draftResult().allyDuoRating.totalRating}
+                rating={draftResult()?.allyDuoRating.totalRating}
                 href="#duo-result"
                 tooltip={
                     <>
@@ -135,7 +135,7 @@ export const DraftSummaryCards = (
                 team={props.team}
                 icon={presentationChartLine}
                 title="Winrate"
-                rating={draftResult().totalRating}
+                rating={draftResult()?.totalRating}
                 href="#total-result"
                 tooltip={
                     <>
@@ -161,18 +161,19 @@ export const ChampionSummaryCards: Component<ChampionSummaryCardProps> = (
     const { allyDraftAnalysis, opponentDraftAnalysis } = useDraftAnalysis();
 
     const draftResult = () =>
-        props.team === "ally" ? allyDraftAnalysis()! : opponentDraftAnalysis()!;
+        props.team === "ally" ? allyDraftAnalysis() : opponentDraftAnalysis();
 
-    const name = () => dataset()!.championData[props.championKey].name;
+    const name = () =>
+        dataset()?.championData[props.championKey]?.name ?? props.championKey;
 
     const baseChampionRating = () =>
-        draftResult().allyChampionRating.championResults.find(
+        draftResult()?.allyChampionRating.championResults.find(
             (r) => r.championKey === props.championKey,
         )?.rating ?? 0;
 
     const duoRating = () =>
-        draftResult()
-            .allyDuoRating.duoResults.filter(
+        (draftResult()?.allyDuoRating.duoResults ?? [])
+            .filter(
                 (r) =>
                     r.championKeyA === props.championKey ||
                     r.championKeyB === props.championKey,
@@ -180,8 +181,8 @@ export const ChampionSummaryCards: Component<ChampionSummaryCardProps> = (
             .reduce((acc, r) => acc + r.rating / 2, 0);
 
     const matchupRating = () =>
-        draftResult()
-            .matchupRating.matchupResults.filter(
+        (draftResult()?.matchupRating.matchupResults ?? [])
+            .filter(
                 (r) =>
                     r.championKeyA === props.championKey ||
                     r.championKeyB === props.championKey,

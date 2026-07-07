@@ -241,6 +241,19 @@ export default function SettingsDialog() {
                             }
                         />
                     </label>
+                    <div class="flex space-x-8 items-center justify-between">
+                        <span class="text-lg uppercase">
+                            Use cached champion stats
+                        </span>
+                        <Switch
+                            checked={config.lolmixUseCache}
+                            onChange={() =>
+                                setConfig({
+                                    lolmixUseCache: !config.lolmixUseCache,
+                                })
+                            }
+                        />
+                    </div>
                     <LolmixConnectionStatusPanel />
                 </div>
             </div>

@@ -35,6 +35,7 @@ const DEFAULT_CONFIG: DraftGapConfig = {
     // LOLMIX
     lolmixServerHost: LOLMIX_DEFAULT_HOST,
     lolmixServerPort: LOLMIX_DEFAULT_PORT,
+    lolmixUseCache: true,
 };
 
 const FAVOURITE_PICKS_KEY = "draftgap-favourite-picks";

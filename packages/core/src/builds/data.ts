@@ -1,9 +1,6 @@
+import { FetchQueryOptions, QueryClient } from "@tanstack/query-core";
 import {
-    FetchQueryOptions,
-    QueryClient,
-    QueryOptions,
-} from "@tanstack/query-core";
-import {
+    type LolalyticsFetchText,
     LolalyticsChampionResponse,
     getLolalyticsChampion,
 } from "../../../../apps/dataset/src/lolalytics/champion";
@@ -24,6 +21,40 @@ import {
 } from "../models/build/BuildDataset";
 import { Dataset } from "../models/dataset/Dataset";
 import { EntityStats } from "./entity-analysis";
+
+const DEFAULT_BUILD_DATA_PATCH = "30";
+const DEFAULT_BUILD_DATA_TIER = "all";
+
+export type FetchBuildDataOptions = {
+    patch?: string;
+    tier?: string;
+    fetchText?: LolalyticsFetchText;
+};
+
+function statsFromWinrateRow(
+    row: readonly unknown[],
+    winRateIndex: number,
+    gamesIndex: number,
+): EntityStats {
+    const winRate = Number(row[winRateIndex]) / 100;
+    const games = Number(row[gamesIndex]);
+
+    return {
+        wins: Math.round(games * winRate),
+        games,
+    };
+}
+
+function statsFromWinsGamesRow(
+    row: readonly unknown[],
+    gamesIndex: number,
+    winsIndex: number,
+): EntityStats {
+    return {
+        games: Number(row[gamesIndex]),
+        wins: Number(row[winsIndex]),
+    };
+}
 
 function getRunesBuildData(
     dataset: Dataset,
@@ -185,10 +216,12 @@ function getSkillsBuildData(championData: LolalyticsChampionResponse) {
         skillOrderData: LolalyticsChampionResponse["skills"]["skillOrder"][number],
     ) => {
         const skillOrder = skillOrderData[0] as SkillOrder;
-        const games = skillOrderData[1];
-        const wins = skillOrderData[2];
+        const stats =
+            skillOrderData.length >= 4
+                ? statsFromWinrateRow(skillOrderData, 1, 3)
+                : statsFromWinsGamesRow(skillOrderData, 1, 2);
 
-        return [skillOrder, { wins, games }] as const;
+        return [skillOrder, stats] as const;
     };
 
     for (const skillOrderData of championData.skills.skillOrder) {
@@ -207,10 +240,12 @@ function getSkillsBuildData(championData: LolalyticsChampionResponse) {
         i: number,
     ) => {
         const skill = ["Q", "W", "E", "R"][i] as Skill;
-        const games = skillLevelItemData[0];
-        const wins = skillLevelItemData[1];
+        const stats =
+            skillLevelItemData.length >= 3
+                ? statsFromWinrateRow(skillLevelItemData, 0, 2)
+                : statsFromWinsGamesRow(skillLevelItemData, 0, 1);
 
-        return [skill, { wins, games }] as const;
+        return [skill, stats] as const;
     };
 
     skills.level = Array.from({
@@ -291,18 +326,26 @@ function fullDatasetFromLolalyticsData(
 function getLolalyticsChampionOptions(
     patch: string,
     championKey: string,
+    championId: string,
     role: LolalyticsRole | "default" = "default",
     matchup?: string,
+    matchupId?: string,
     matchupRole?: LolalyticsRole,
+    options: Pick<FetchBuildDataOptions, "fetchText" | "tier"> = {},
 ) {
+    const tier = options.tier ?? DEFAULT_BUILD_DATA_TIER;
+
     return {
         queryKey: [
             "lolalytics",
             "champion",
             patch,
+            tier,
             championKey,
+            championId,
             role,
             matchup,
+            matchupId,
             matchupRole,
         ],
         queryFn: () =>
@@ -312,6 +355,12 @@ function getLolalyticsChampionOptions(
                 role,
                 matchup,
                 matchupRole,
+                {
+                    championId,
+                    matchupId,
+                    tier,
+                    fetchText: options.fetchText,
+                },
             ),
         staleTime: 1000 * 60 * 60, // 1 hour
     } satisfies FetchQueryOptions;
@@ -323,62 +372,75 @@ export async function fetchBuildData(
     championKey: string,
     role: Role,
     opponentTeamComp: Map<Role, string>,
+    options: FetchBuildDataOptions = {},
 ) {
-    // convert patch from 13.7.1 to 13.7
-    const patch = dataset.version.split(".").slice(0, 2).join(".");
+    const patch = options.patch ?? DEFAULT_BUILD_DATA_PATCH;
+    const tier = options.tier ?? DEFAULT_BUILD_DATA_TIER;
+    const champion = dataset.championData[championKey];
+    if (!champion) {
+        throw new Error(`No champion data for ${championKey}`);
+    }
 
-    const championPatchDataPromises = queryClient.fetchQuery(
+    const championDataPromise = queryClient.fetchQuery(
         getLolalyticsChampionOptions(
             patch,
             championKey,
+            champion.id,
             LOLALYTICS_ROLES[role],
+            undefined,
+            undefined,
+            undefined,
+            { fetchText: options.fetchText, tier },
         ),
     );
 
-    const champion30DaysDataPromises = queryClient.fetchQuery(
-        getLolalyticsChampionOptions("30", championKey, LOLALYTICS_ROLES[role]),
-    );
+    const matchupDataPromises = [...opponentTeamComp.entries()].map(
+        ([opponentRole, opponentChampionKey]) => {
+            const opponentChampion = dataset.championData[opponentChampionKey];
+            if (!opponentChampion) {
+                throw new Error(`No champion data for ${opponentChampionKey}`);
+            }
 
-    const matchup30DaysDataPromises = [...opponentTeamComp.entries()].map(
-        ([opponentRole, opponentChampionKey]) =>
-            queryClient
+            return queryClient
                 .fetchQuery(
                     getLolalyticsChampionOptions(
-                        "30",
+                        patch,
                         championKey,
+                        champion.id,
                         LOLALYTICS_ROLES[role],
                         opponentChampionKey,
+                        opponentChampion.id,
                         LOLALYTICS_ROLES[opponentRole],
+                        { fetchText: options.fetchText, tier },
                     ),
                 )
                 .then((championData) => ({
                     championKey: opponentChampionKey,
                     role: opponentRole,
                     championData,
-                })),
+                }));
+        },
     );
 
     const results = await Promise.all([
-        championPatchDataPromises,
-        champion30DaysDataPromises,
-        ...matchup30DaysDataPromises,
+        championDataPromise,
+        ...matchupDataPromises,
     ]);
-    const [championPatchData, champion30DaysData, ...matchup30DaysData] =
-        results;
+    const [championData, ...matchupData] = results;
 
     const partialDataset = partialDatasetFromLolalyticsData(
         dataset,
         championKey,
         role,
-        championPatchData,
+        championData,
     );
 
     const fullDataset = fullDatasetFromLolalyticsData(
         dataset,
         championKey,
         role,
-        champion30DaysData,
-        matchup30DaysData,
+        championData,
+        matchupData,
     );
 
     return [partialDataset, fullDataset] as const;

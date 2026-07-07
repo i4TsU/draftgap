@@ -1,6 +1,18 @@
 import { retry } from "../utils";
 import { type LolalyticsRole } from "./roles";
 
+const LOLALYTICS_BASE_URL = "https://lolalytics.com/lol";
+const DEFAULT_TIER = "all";
+
+export type LolalyticsFetchText = (url: string) => Promise<string>;
+
+export type LolalyticsChampionFetchOptions = {
+    championId?: string;
+    matchupId?: string;
+    tier?: string;
+    fetchText?: LolalyticsFetchText;
+};
+
 export interface LolalyticsChampionResponse {
     header: Header;
     summary: Summary;
@@ -127,10 +139,12 @@ export interface LolalyticsChampionResponseRunes {
 }
 
 export interface Skills {
-    skillEarly: Array<Array<[number, number]>>;
+    skillEarly: Array<Array<[number, number] | [number, number, number]>>;
     skill6Pick: number;
     skill10Pick: number;
-    skillOrder: Array<[string, number, number]>;
+    skillOrder: Array<
+        [string, number, number] | [string, number, number, number]
+    >;
 }
 
 export interface Summary {
@@ -221,46 +235,198 @@ export interface TopStats {
     topelo: string;
 }
 
+export function buildLolalyticsChampionUrl(
+    patch: string,
+    championId: string,
+    role: LolalyticsRole | "default" = "default",
+    matchupId?: string,
+    matchupRole?: LolalyticsRole,
+    tier = DEFAULT_TIER,
+) {
+    const normalizedPatch = patch.split(".").slice(0, 2).join(".");
+    const championSlug = normalizeChampionSlug(championId);
+    const queryParams = new URLSearchParams();
+
+    if (role !== "default") {
+        queryParams.append("lane", role);
+    }
+    queryParams.append("tier", tier);
+    queryParams.append("patch", normalizedPatch);
+
+    let path = `${LOLALYTICS_BASE_URL}/${championSlug}/build/`;
+    if (matchupId && matchupRole) {
+        path = `${LOLALYTICS_BASE_URL}/${championSlug}/vs/${normalizeChampionSlug(
+            matchupId,
+        )}/build/`;
+        queryParams.append("vslane", matchupRole);
+    }
+
+    return `${path}?${queryParams.toString()}`;
+}
+
+function normalizeChampionSlug(championId: string) {
+    const normalized = championId
+        .trim()
+        .toLowerCase()
+        .replaceAll("'", "")
+        .replaceAll(".", "")
+        .replaceAll(" ", "");
+
+    return normalized === "monkeyking" ? "wukong" : normalized;
+}
+
+async function fetchLolalyticsText(
+    url: string,
+    fetchText?: LolalyticsFetchText,
+) {
+    if (fetchText) {
+        return await fetchText(url);
+    }
+
+    const res = await retry(() => fetch(url));
+    if (!res.ok) {
+        throw new Error(
+            `Failed to fetch lolalytics champion ${url} ${res.status}`,
+        );
+    }
+
+    const text = await res.text();
+    if (!text) {
+        throw new Error(`No text for lolalytics champion ${url}`);
+    }
+
+    return text;
+}
+
+function extractQwikPagePayload(text: string) {
+    const matches = text.matchAll(
+        /<script\s+type=["']qwik\/json["'][^>]*>([\s\S]*?)<\/script>/gi,
+    );
+
+    for (const match of matches) {
+        try {
+            const payload = JSON.parse(match[1]);
+            const decoded = decodeQwikPayload(payload);
+            if (decoded) {
+                return decoded;
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    throw new Error("No decodable lolalytics Qwik payload found");
+}
+
+function decodeQwikPayload(payload: unknown): Record<string, any> | undefined {
+    if (
+        !payload ||
+        typeof payload !== "object" ||
+        !Array.isArray((payload as { objs?: unknown }).objs)
+    ) {
+        return;
+    }
+
+    const objs = (payload as { objs: unknown[] }).objs;
+
+    function isRef(value: unknown) {
+        if (typeof value !== "string" || value.length === 0) {
+            return false;
+        }
+
+        const idx = parseInt(value, 36);
+        return Number.isInteger(idx) && idx >= 0 && idx < objs.length;
+    }
+
+    function resolveRef(ref: string, seen: globalThis.Set<number>): unknown {
+        const idx = parseInt(ref, 36);
+        if (seen.has(idx)) {
+            return null;
+        }
+
+        return decode(objs[idx], new globalThis.Set([...seen, idx]));
+    }
+
+    function decode(value: unknown, seen: globalThis.Set<number>): unknown {
+        if (Array.isArray(value)) {
+            return value.map((item) =>
+                isRef(item) ? resolveRef(item, seen) : decode(item, seen),
+            );
+        }
+
+        if (value && typeof value === "object") {
+            return Object.fromEntries(
+                Object.entries(value).map(([key, item]) => [
+                    key,
+                    isRef(item) ? resolveRef(item, seen) : decode(item, seen),
+                ]),
+            );
+        }
+
+        return value;
+    }
+
+    for (const obj of objs) {
+        if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+            continue;
+        }
+
+        if ("header" in obj && "summary" in obj) {
+            const decoded = decode(obj, new globalThis.Set());
+            if (decoded && typeof decoded === "object") {
+                return decoded as Record<string, any>;
+            }
+        }
+    }
+}
+
+function normalizeLolalyticsChampionResponse(
+    raw: Record<string, any>,
+): LolalyticsChampionResponse {
+    return {
+        ...raw,
+        avgWinRate: raw.avgWinRate ?? raw.avgWr ?? 0,
+        top: raw.top ?? raw.sidebar?.topList ?? [],
+        depth: raw.depth ?? raw.sidebar?.depth ?? [],
+        topStats: raw.topStats ?? raw.sidebar?.topStats ?? {},
+        stats: raw.stats ?? raw.sidebar?.stats?.stats ?? [],
+        statsCount: raw.statsCount ?? raw.sidebar?.stats?.count ?? 0,
+        time: raw.time ?? raw.sidebar?.time?.time ?? {},
+        timeWin: raw.timeWin ?? raw.sidebar?.time?.timeWin ?? {},
+        skills: raw.skills ?? {
+            skillEarly: raw.skillEarly ?? [],
+            skillOrder: raw.skillOrder ?? [],
+            skill6Pick: raw.skill6Pick ?? 0,
+            skill10Pick: raw.skill10Pick ?? 0,
+        },
+    } as LolalyticsChampionResponse;
+}
+
 export async function getLolalyticsChampion(
     patch: string,
     championKey: string,
     role: LolalyticsRole | "default" = "default",
     matchup?: string,
     matchupRole?: LolalyticsRole,
+    options: LolalyticsChampionFetchOptions = {},
 ) {
-    // convert patch from ex. 12.21.1 to 12.21
-    patch = patch.split(".").slice(0, 2).join(".");
-
-    const queryParams = new URLSearchParams();
-    queryParams.append("ep", "champion");
-    queryParams.append("p", "d");
-    queryParams.append("v", "1");
-    queryParams.append("tier", "emerald_plus");
-    queryParams.append("queue", "420");
-    queryParams.append("region", "all");
-    queryParams.append("patch", patch);
-    queryParams.append("cid", championKey);
-    queryParams.append("lane", role);
-    if (matchup && matchupRole) {
-        queryParams.append("vs", matchup);
-        queryParams.append("vslane", matchupRole);
-    }
-
-    const url = `https://ax.lolalytics.com/mega/?${queryParams.toString()}`;
-    const res = await retry(() => fetch(url));
-
-    const text = await res.text();
-    if (!text) {
-        throw new Error("No text for lolalytics champion " + championKey);
-    }
+    const url = buildLolalyticsChampionUrl(
+        patch,
+        options.championId ?? championKey,
+        role,
+        options.matchupId ?? matchup,
+        matchupRole,
+        options.tier ?? DEFAULT_TIER,
+    );
+    const text = await fetchLolalyticsText(url, options.fetchText);
 
     try {
-        const json = JSON.parse(text) as LolalyticsChampionResponse;
-
-        return json;
+        return normalizeLolalyticsChampionResponse(
+            extractQwikPagePayload(text),
+        );
     } catch (e) {
         throw new Error(
-            "Error parsing JSON for lolalytics champion " +
+            "Error parsing Qwik JSON for lolalytics champion " +
                 championKey +
                 " url: " +
                 url,

@@ -70,8 +70,8 @@ export function createDraftAnalysisContext() {
         return analyzeDraft(
             dataset()!,
             dataset30Days()!,
-            allyTeamComps()[0][0],
-            opponentTeamComps()[0][0],
+            allyTeamComp(),
+            opponentTeamComp(),
             draftAnalysisConfig(),
         );
     });
@@ -80,8 +80,8 @@ export function createDraftAnalysisContext() {
         return analyzeDraft(
             dataset()!,
             dataset30Days()!,
-            opponentTeamComps()[0][0],
-            allyTeamComps()[0][0],
+            opponentTeamComp(),
+            allyTeamComp(),
             draftAnalysisConfig(),
         );
     });
