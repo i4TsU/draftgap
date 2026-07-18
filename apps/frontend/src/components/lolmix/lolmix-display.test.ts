@@ -282,7 +282,7 @@ describe("lolmix display helpers", () => {
         });
     });
 
-    test("selects optimal rune pages by score and fallback pages by win rate", () => {
+    test("selects rune pages by matchup score instead of raw win rate", () => {
         const optimalLowWr = entry(1, "rune_page", {
             name: "rune_page:v2;kind=optimal;pri_path=1;sec_path=0;primary=8112_8139_8140_8106;secondary=9105_8017;shards=5008_5008_5001",
             score: 0.05,
@@ -315,7 +315,7 @@ describe("lolmix display helpers", () => {
                 name: "rune_page",
                 entries: [fallbackLowWr, fallbackHighWr],
             })?.id,
-        ).toBe(4);
+        ).toBe(3);
     });
 
     test("parses prose rune pages without exposing the raw key", () => {

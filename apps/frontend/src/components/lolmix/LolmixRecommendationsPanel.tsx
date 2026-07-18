@@ -57,7 +57,6 @@ import {
     lolmixWinrateTextClass,
     parseLolmixDisplayRunePageKey,
     parseLolmixReadableRunePage,
-    parseLolmixRunePageKey,
     type LolmixBuildPathStep,
     type LolmixDecisionPhase,
     type LolmixDisplayEntry,
@@ -354,12 +353,18 @@ const Recommendations: Component<{ data: LolmixAnalyzeResponse }> = (props) => {
                     </StateMessage>
                 }
             >
-                <PhaseContent
-                    data={props.data}
-                    dataset={dataset()}
-                    phase={activePhase()}
-                    sections={sections()}
-                />
+                <div
+                    id={`lolmix-phase-${activePhase()}`}
+                    role="tabpanel"
+                    aria-labelledby={`lolmix-phase-tab-${activePhase()}`}
+                >
+                    <PhaseContent
+                        data={props.data}
+                        dataset={dataset()}
+                        phase={activePhase()}
+                        sections={sections()}
+                    />
+                </div>
             </Show>
         </div>
     );
@@ -461,37 +466,50 @@ const QuickDecisions: Component<{
 
     return (
         <Show when={tiles().length > 0}>
-            <div class="grid grid-cols-2 gap-2 lg:grid-cols-5">
-                <For each={tiles()}>
-                    {(tile) => (
-                        <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2.5">
-                            <div class="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                                {tile.label}
-                            </div>
-                            <div
-                                class="mt-1 truncate text-sm font-semibold text-neutral-100"
-                                title={tile.value}
-                            >
-                                {tile.value}
-                            </div>
-                            <div class="mt-1 flex items-center justify-between gap-2 text-xs">
-                                <span class="truncate text-neutral-500">
-                                    {tile.sub}
-                                </span>
-                                <Show when={tile.score !== undefined}>
-                                    <span
-                                        class={cn(
-                                            "shrink-0 tabular-nums",
-                                            lolmixScoreClass(tile.score!),
-                                        )}
-                                    >
-                                        {formatLolmixSignedPercent(tile.score!)}
+            <div class="rounded-md border border-neutral-800 bg-neutral-950/20 p-2.5">
+                <div class="mb-2 flex items-baseline justify-between gap-2 px-0.5">
+                    <h3 class="text-xs font-semibold uppercase tracking-wide text-neutral-200">
+                        Game plan
+                    </h3>
+                    <span class="text-[10px] uppercase tracking-wider text-neutral-600">
+                        Best choices for this draft
+                    </span>
+                </div>
+                <div class="flex snap-x snap-mandatory gap-2 overflow-x-auto pb-1 lg:grid lg:grid-cols-5 lg:overflow-visible lg:pb-0">
+                    <For each={tiles()}>
+                        {(tile) => (
+                            <div class="w-36 shrink-0 snap-start rounded-md border border-neutral-800/80 bg-neutral-900/50 p-2.5 lg:w-auto lg:min-w-0">
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                                    {tile.label}
+                                </div>
+                                <div
+                                    class="mt-1 truncate text-sm font-semibold text-neutral-100"
+                                    title={tile.value}
+                                >
+                                    {tile.value}
+                                </div>
+                                <div class="mt-1 flex items-center justify-between gap-2 text-xs">
+                                    <span class="truncate text-neutral-500">
+                                        {tile.sub}
                                     </span>
-                                </Show>
+                                    <Show when={tile.score !== undefined}>
+                                        <span
+                                            class={cn(
+                                                "shrink-0 font-semibold tabular-nums",
+                                                lolmixScoreClass(tile.score!),
+                                            )}
+                                            title="Lolmix draft score: overall delta plus confidence-weighted matchup adjustments"
+                                        >
+                                            {formatLolmixSignedPercent(
+                                                tile.score!,
+                                            )}
+                                        </span>
+                                    </Show>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </For>
+                        )}
+                    </For>
+                </div>
             </div>
         </Show>
     );
@@ -509,9 +527,44 @@ const PhaseTabs: Component<{
                 props.activePhase === item.id,
         ),
     );
+    const enabledPhases = () =>
+        visiblePhases().filter((item) => props.grouped[item.id].length > 0);
+    const selectAndFocus = (phase: LolmixDecisionPhase) => {
+        props.onSelect(phase);
+        queueMicrotask(() =>
+            document.getElementById(`lolmix-phase-tab-${phase}`)?.focus(),
+        );
+    };
+    const onTabKeyDown = (
+        event: KeyboardEvent,
+        current: LolmixDecisionPhase,
+    ) => {
+        const phases = enabledPhases();
+        const currentIndex = phases.findIndex((item) => item.id === current);
+        if (currentIndex < 0) return;
+
+        let nextIndex: number | undefined;
+        if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+            nextIndex = (currentIndex + 1) % phases.length;
+        } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+            nextIndex = (currentIndex - 1 + phases.length) % phases.length;
+        } else if (event.key === "Home") {
+            nextIndex = 0;
+        } else if (event.key === "End") {
+            nextIndex = phases.length - 1;
+        }
+        if (nextIndex === undefined) return;
+
+        event.preventDefault();
+        selectAndFocus(phases[nextIndex].id);
+    };
 
     return (
-        <div class="grid grid-cols-1 gap-1 rounded-md bg-neutral-950/40 p-1 sm:grid-cols-3 xl:grid-cols-4">
+        <div
+            class="flex gap-1 overflow-x-auto rounded-md bg-neutral-950/40 p-1"
+            role="tablist"
+            aria-label="Lolmix recommendation phases"
+        >
             <For each={visiblePhases()}>
                 {(item) => {
                     const count = () => props.grouped[item.id].length;
@@ -520,9 +573,14 @@ const PhaseTabs: Component<{
                     return (
                         <button
                             type="button"
+                            id={`lolmix-phase-tab-${item.id}`}
                             disabled={disabled()}
+                            role="tab"
+                            aria-selected={props.activePhase === item.id}
+                            aria-controls={`lolmix-phase-${item.id}`}
+                            tabIndex={props.activePhase === item.id ? 0 : -1}
                             class={cn(
-                                "rounded px-2 py-1.5 text-center transition",
+                                "min-w-[5.5rem] flex-1 rounded px-2 py-2 text-center transition sm:py-1.5",
                                 props.activePhase === item.id
                                     ? "bg-neutral-700 text-neutral-100"
                                     : disabled()
@@ -530,11 +588,12 @@ const PhaseTabs: Component<{
                                       : "text-neutral-400 hover:bg-neutral-800/70 hover:text-neutral-200",
                             )}
                             onClick={() => props.onSelect(item.id)}
+                            onKeyDown={(event) => onTabKeyDown(event, item.id)}
                         >
                             <span class="block text-xs font-semibold">
                                 {item.label}
                             </span>
-                            <span class="block text-[10px] uppercase tracking-wider opacity-70">
+                            <span class="hidden text-[10px] uppercase tracking-wider opacity-70 sm:block">
                                 {item.kicker}
                             </span>
                         </button>
@@ -597,8 +656,75 @@ const PhaseContent: Component<{
             </div>
         </Match>
         <Match when={props.phase === "now"}>
-            <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
-                <For each={props.sections}>
+            <div class="flex flex-col gap-3">
+                <For
+                    each={props.sections.filter(
+                        (section) => section.name === "rune_page",
+                    )}
+                >
+                    {(section) => (
+                        <SectionBand
+                            title={lolmixSectionTitle(section.name)}
+                            kicker="Recommended setup"
+                            headline="Ranked by draft score"
+                        >
+                            <SectionRenderer
+                                data={props.data}
+                                dataset={props.dataset}
+                                section={section}
+                            />
+                        </SectionBand>
+                    )}
+                </For>
+                <div class="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                    <For
+                        each={props.sections.filter((section) =>
+                            ["summoners", "starters"].includes(section.name),
+                        )}
+                    >
+                        {(section) => (
+                            <SectionBand
+                                title={lolmixSectionTitle(section.name)}
+                                kicker="Pick this"
+                            >
+                                <SectionRenderer
+                                    data={props.data}
+                                    dataset={props.dataset}
+                                    section={section}
+                                />
+                            </SectionBand>
+                        )}
+                    </For>
+                </div>
+                <For
+                    each={props.sections.filter(
+                        (section) => section.name === "skill_early",
+                    )}
+                >
+                    {(section) => (
+                        <SectionBand
+                            title={lolmixSectionTitle(section.name)}
+                            kicker="Level by level"
+                        >
+                            <SectionRenderer
+                                data={props.data}
+                                dataset={props.dataset}
+                                section={section}
+                            />
+                        </SectionBand>
+                    )}
+                </For>
+                <For
+                    each={props.sections.filter(
+                        (section) =>
+                            ![
+                                "summoners",
+                                "starters",
+                                "rune_page",
+                                "skill_early",
+                            ].includes(section.name),
+                    )}
+                >
                     {(section) => (
                         <SectionBand
                             title={lolmixSectionTitle(section.name)}
@@ -862,62 +988,194 @@ const RunePageSection: Component<{
     const entries = createMemo(() =>
         lolmixRunePageDisplayEntries(props.section),
     );
-    const [selectedIndex, setSelectedIndex] = createSignal<number>();
-    const activeIndex = () => {
-        const selected = selectedIndex();
-        if (selected !== undefined && entries()[selected]) return selected;
+    const [selectedId, setSelectedId] = createSignal<number>();
+    const [showAll, setShowAll] = createSignal(false);
+    const recommended = () =>
+        entries().find((entry) => entry.recommended) ?? entries()[0];
+    const active = () =>
+        entries().find((entry) => entry.entry.id === selectedId()) ??
+        recommended();
+    const visibleOptions = () => {
+        if (showAll() || entries().length <= 4) return entries();
 
-        const recommended = entries().findIndex((entry) => entry.recommended);
-        return recommended >= 0 ? recommended : 0;
+        const first = entries().slice(0, 4);
+        const selected = active();
+        if (
+            selected &&
+            !first.some((item) => item.entry.id === selected.entry.id)
+        ) {
+            return [...first.slice(0, 3), selected];
+        }
+        return first;
     };
-    const selectedEntry = () => entries()[activeIndex()]?.entry;
 
     return (
         <Show
             when={entries().length > 0}
             fallback={<EmptyState>No rune pages available</EmptyState>}
         >
-            <div class="flex flex-col gap-2.5">
-                <Show when={entries().length > 1}>
-                    <div class="flex flex-wrap gap-1">
-                        <For each={entries()}>
-                            {(item, index) => {
-                                const page = () =>
-                                    parseLolmixReadableRunePage(
-                                        item.entry.name,
-                                    );
-                                return (
-                                    <button
-                                        type="button"
-                                        class={cn(
-                                            "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition",
-                                            index() === activeIndex()
-                                                ? "bg-neutral-700 text-neutral-100"
-                                                : "bg-neutral-950/40 text-neutral-500 hover:text-neutral-300",
-                                            item.rare && "text-amber-300/80",
-                                        )}
-                                        onClick={() =>
-                                            setSelectedIndex(index())
-                                        }
-                                    >
-                                        {page()?.kind ?? `Page ${index() + 1}`}
-                                    </button>
-                                );
-                            }}
-                        </For>
-                    </div>
-                </Show>
-                <Show when={selectedEntry()}>
-                    {(entry) => (
+            <div
+                class={cn(
+                    "grid grid-cols-1 gap-3",
+                    entries().length > 1 &&
+                        "xl:grid-cols-[minmax(0,1fr)_20rem]",
+                )}
+            >
+                <Show when={active()}>
+                    {(item) => (
                         <RunePageDetail
                             data={props.data}
                             dataset={props.dataset}
-                            entry={entry()}
+                            entry={item().entry}
+                            recommended={item().recommended}
                         />
                     )}
                 </Show>
+                <Show when={entries().length > 1}>
+                    <aside class="rounded-md border border-neutral-800 bg-neutral-950/25 p-2.5">
+                        <div class="mb-2 flex items-baseline justify-between gap-2 px-0.5">
+                            <h4 class="text-xs font-semibold uppercase tracking-wide text-neutral-200">
+                                Compare pages
+                            </h4>
+                            <span class="text-[10px] uppercase tracking-wider text-neutral-600">
+                                {entries().length} options
+                            </span>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <For each={visibleOptions()}>
+                                {(item) => (
+                                    <RunePageOption
+                                        active={
+                                            active()?.entry.id === item.entry.id
+                                        }
+                                        data={props.data}
+                                        dataset={props.dataset}
+                                        item={item}
+                                        onSelect={() =>
+                                            setSelectedId(item.entry.id)
+                                        }
+                                    />
+                                )}
+                            </For>
+                        </div>
+                        <Show when={entries().length > 4}>
+                            <button
+                                type="button"
+                                class="mt-2 text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
+                                onClick={() => setShowAll(!showAll())}
+                            >
+                                {showAll()
+                                    ? "Show fewer pages"
+                                    : `Show ${entries().length - 4} more pages`}
+                            </button>
+                        </Show>
+                    </aside>
+                </Show>
             </div>
         </Show>
+    );
+};
+
+const RunePageOption: Component<{
+    active: boolean;
+    data: LolmixAnalyzeResponse;
+    dataset: Dataset | undefined;
+    item: LolmixDisplayEntry;
+    onSelect: () => void;
+}> = (props) => {
+    const page = () => parseLolmixReadableRunePage(props.item.entry.name);
+    const encoded = () => parseLolmixDisplayRunePageKey(props.item.entry.name);
+    const keystone = () =>
+        lolmixRunePageKeystoneName(
+            props.item.entry.name,
+            props.data,
+            props.dataset,
+        );
+    const title = () =>
+        keystone() ?? page()?.primaryPathName ?? page()?.kind ?? "Rune page";
+    const details = () => {
+        const readable = page();
+        const secondary =
+            readable?.secondaryRunes.join(" + ") ||
+            encoded()
+                ?.secondary.map(
+                    (id) => props.dataset?.runeData[id]?.name ?? String(id),
+                )
+                .join(" + ");
+        if (secondary) return secondary;
+
+        const encodedPage = encoded();
+        return [
+            readable?.primaryPathName ??
+                (props.dataset
+                    ? runePathByIndex(props.dataset, encodedPage?.primaryPath)
+                          ?.name
+                    : undefined),
+            readable?.secondaryPathName ??
+                (props.dataset
+                    ? runePathByIndex(props.dataset, encodedPage?.secondaryPath)
+                          ?.name
+                    : undefined),
+        ]
+            .filter(Boolean)
+            .join(" + ");
+    };
+
+    return (
+        <button
+            type="button"
+            aria-pressed={props.active}
+            aria-label={`${page()?.kind ?? "Rune page"}: ${props.item.entry.name}`}
+            class={cn(
+                "w-full rounded-md border px-2.5 py-2 text-left transition",
+                props.active
+                    ? "border-blue-400/50 bg-blue-400/10"
+                    : "border-neutral-800 bg-neutral-900/35 hover:border-neutral-700 hover:bg-neutral-800/45",
+                props.item.rare && "border-amber-400/30",
+            )}
+            onClick={() => props.onSelect()}
+        >
+            <div class="flex min-w-0 items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <div class="flex min-w-0 items-center gap-1.5">
+                        <span class="truncate text-xs font-semibold text-neutral-100">
+                            {title()}
+                        </span>
+                        <Show when={props.item.recommended}>
+                            <span class="shrink-0 rounded bg-ally/15 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-blue-300">
+                                Pick
+                            </span>
+                        </Show>
+                    </div>
+                    <div
+                        class="mt-0.5 truncate text-[10px] text-neutral-500"
+                        title={details()}
+                    >
+                        {page()?.kind ?? "Observed"} · {details()}
+                    </div>
+                </div>
+                <span
+                    class={cn(
+                        "shrink-0 text-xs font-semibold tabular-nums",
+                        lolmixScoreClass(props.item.entry.score),
+                    )}
+                    title="Lolmix draft score: overall delta plus confidence-weighted matchup adjustments"
+                >
+                    {formatLolmixSignedPercent(props.item.entry.score)}
+                </span>
+            </div>
+            <div class="mt-1.5 flex items-center gap-2 text-[10px] uppercase tabular-nums text-neutral-500">
+                <span>
+                    WR {formatLolmixPercent(props.item.entry.combined_wr)}
+                </span>
+                <span>
+                    PR {formatLolmixPercent(props.item.entry.combined_pr)}
+                </span>
+                <span class="ml-auto">
+                    n={formatLolmixCompactCount(props.item.entry.total_n_max)}
+                </span>
+            </div>
+        </button>
     );
 };
 
@@ -925,10 +1183,30 @@ const RunePageDetail: Component<{
     data: LolmixAnalyzeResponse;
     dataset: Dataset | undefined;
     entry: LolmixRecommendationEntry;
+    recommended: boolean;
 }> = (props) => {
     const readable = () => parseLolmixReadableRunePage(props.entry.name);
-    const encoded = () => parseLolmixRunePageKey(props.entry.name);
+    const encoded = () => parseLolmixDisplayRunePageKey(props.entry.name);
     const metrics = () => lolmixRunePageMetrics(props.entry);
+    const keystone = () =>
+        lolmixRunePageKeystoneName(props.entry.name, props.data, props.dataset);
+    const pathSummary = () => {
+        const encodedPage = encoded();
+        return [
+            readable()?.primaryPathName ??
+                (props.dataset
+                    ? runePathByIndex(props.dataset, encodedPage?.primaryPath)
+                          ?.name
+                    : undefined),
+            readable()?.secondaryPathName ??
+                (props.dataset
+                    ? runePathByIndex(props.dataset, encodedPage?.secondaryPath)
+                          ?.name
+                    : undefined),
+        ]
+            .filter(Boolean)
+            .join(" + ");
+    };
     const hasReadableRunes = () => {
         const page = readable();
         return !!(
@@ -941,50 +1219,78 @@ const RunePageDetail: Component<{
     };
 
     return (
-        <div class="rounded-md bg-neutral-950/25 p-3">
-            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <div class="flex items-baseline gap-2">
-                    <span class="text-[10px] uppercase tracking-wide text-neutral-500">
-                        {metrics().headlineLabel}
-                    </span>
-                    <span
-                        class={cn(
-                            "text-lg font-semibold tabular-nums",
-                            metrics().headlineClass,
-                        )}
-                    >
-                        {metrics().headlineValue}
-                    </span>
+        <div
+            class="rounded-md border border-neutral-800 bg-neutral-950/25 p-3"
+            aria-live="polite"
+        >
+            <div class="mb-3 flex flex-wrap items-start justify-between gap-3 border-b border-neutral-800 pb-3">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span
+                            class={cn(
+                                "rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                                props.recommended
+                                    ? "bg-ally/15 text-blue-300"
+                                    : "bg-neutral-800 text-neutral-400",
+                            )}
+                        >
+                            {props.recommended ? "Recommended" : "Alternative"}
+                        </span>
+                        <Show when={readable()?.kind}>
+                            {(kind) => (
+                                <span class="text-[10px] uppercase tracking-wide text-neutral-500">
+                                    {kind()}
+                                </span>
+                            )}
+                        </Show>
+                    </div>
+                    <h4 class="mt-1.5 truncate text-base font-semibold text-neutral-100">
+                        {keystone() ??
+                            readable()?.primaryPathName ??
+                            "Rune page"}
+                    </h4>
+                    <p class="mt-0.5 text-xs text-neutral-500">
+                        {pathSummary()}
+                    </p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
-                    <Switch>
-                        <Match when={metrics().mode === "optimal"}>
-                            <span class="text-xs uppercase text-neutral-500">
-                                Coverage{" "}
-                                {formatLolmixPercent(props.entry.combined_pr)}
-                            </span>
-                            <span class="text-xs uppercase text-neutral-500">
-                                N{" "}
-                                {formatLolmixCompactCount(
-                                    props.entry.total_n_max,
-                                )}
-                            </span>
-                        </Match>
-                        <Match when={true}>
-                            <span class="text-xs uppercase text-neutral-500">
-                                PR{" "}
-                                {formatLolmixPercent(props.entry.combined_pr)}
-                            </span>
-                            <ScoreChip value={props.entry.score} />
-                            <SamplePill value={props.entry.total_n_max} />
-                        </Match>
-                    </Switch>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                    <RuneEvidenceMetric
+                        label="Draft score"
+                        value={formatLolmixSignedPercent(props.entry.score)}
+                        valueClass={lolmixScoreClass(props.entry.score)}
+                    />
+                    <Show when={metrics().mode === "observed"}>
+                        <RuneEvidenceMetric
+                            label="Win rate"
+                            value={formatLolmixPercent(props.entry.combined_wr)}
+                            valueClass={lolmixWinrateTextClass(
+                                props.entry.combined_wr,
+                            )}
+                        />
+                    </Show>
+                    <RuneEvidenceMetric
+                        label={
+                            metrics().mode === "optimal"
+                                ? "Coverage"
+                                : "Pick rate"
+                        }
+                        value={formatLolmixPercent(props.entry.combined_pr)}
+                    />
+                    <RuneEvidenceMetric
+                        label="Sample"
+                        value={formatLolmixCompactCount(
+                            props.entry.total_n_max,
+                        )}
+                    />
                 </div>
             </div>
 
             <Switch>
                 <Match when={hasReadableRunes()}>
-                    <ReadableRunePage page={readable()!} />
+                    <ReadableRunePage
+                        dataset={props.dataset}
+                        page={readable()!}
+                    />
                 </Match>
                 <Match when={props.dataset && encoded()}>
                     <RuneMetricsBoard
@@ -1015,7 +1321,28 @@ const RunePageDetail: Component<{
     );
 };
 
+const RuneEvidenceMetric: Component<{
+    label: string;
+    value: string;
+    valueClass?: string;
+}> = (props) => (
+    <div class="min-w-[4.5rem]">
+        <div class="text-[9px] font-bold uppercase tracking-wider text-neutral-600">
+            {props.label}
+        </div>
+        <div
+            class={cn(
+                "mt-0.5 text-sm font-semibold tabular-nums text-neutral-200",
+                props.valueClass,
+            )}
+        >
+            {props.value}
+        </div>
+    </div>
+);
+
 const ReadableRunePage: Component<{
+    dataset: Dataset | undefined;
     page: NonNullable<ReturnType<typeof parseLolmixReadableRunePage>>;
 }> = (props) => (
     <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -1024,11 +1351,13 @@ const ReadableRunePage: Component<{
             path={props.page.primaryPathName}
             runes={props.page.primaryRunes}
             keystone
+            dataset={props.dataset}
         />
         <RunePathColumn
             label="Secondary"
             path={props.page.secondaryPathName}
             runes={props.page.secondaryRunes}
+            dataset={props.dataset}
         />
         <Show when={props.page.shards.length > 0}>
             <div class="lg:col-span-2">
@@ -1050,6 +1379,7 @@ const ReadableRunePage: Component<{
 );
 
 const RunePathColumn: Component<{
+    dataset: Dataset | undefined;
     label: string;
     path: string | undefined;
     runes: string[];
@@ -1075,18 +1405,23 @@ const RunePathColumn: Component<{
                     {(rune, index) => (
                         <div
                             class={cn(
-                                "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs",
+                                "flex min-w-0 items-center gap-2 rounded px-1.5 py-1 text-xs",
                                 props.keystone && index() === 0
                                     ? "bg-neutral-800 font-semibold text-neutral-100"
                                     : "text-neutral-300",
                             )}
                         >
+                            <RuneNameIcon
+                                dataset={props.dataset}
+                                name={rune}
+                                keystone={props.keystone && index() === 0}
+                            />
+                            <span class="truncate">{rune}</span>
                             <Show when={props.keystone && index() === 0}>
-                                <span class="rounded-sm bg-amber-500/20 px-1 text-[9px] font-bold uppercase text-amber-300">
+                                <span class="ml-auto shrink-0 rounded-sm bg-amber-500/20 px-1 text-[9px] font-bold uppercase text-amber-300">
                                     Key
                                 </span>
                             </Show>
-                            <span class="truncate">{rune}</span>
                         </div>
                     )}
                 </For>
@@ -1095,9 +1430,55 @@ const RunePathColumn: Component<{
     </div>
 );
 
+const RuneNameIcon: Component<{
+    dataset: Dataset | undefined;
+    name: string;
+    keystone?: boolean;
+    shardKey?: string;
+}> = (props) => {
+    const rune = createMemo(() =>
+        Object.values(props.dataset?.runeData ?? {}).find(
+            (candidate) => candidate.name === props.name,
+        ),
+    );
+    const imageUrl = createMemo(() => {
+        if (props.shardKey) {
+            return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/statmods/statmods${props.shardKey.toLowerCase()}icon.png`;
+        }
+        const currentRune = rune();
+        if (!currentRune) return;
+        return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/${currentRune.icon.toLowerCase()}`;
+    });
+
+    return (
+        <span
+            class={cn(
+                "relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-neutral-700 text-[9px] font-bold text-neutral-300 ring-1 ring-neutral-600",
+                props.keystone ? "h-8 w-8" : "h-6 w-6",
+            )}
+            aria-hidden="true"
+        >
+            {props.name.slice(0, 1)}
+            <Show when={imageUrl()}>
+                {(src) => (
+                    <img
+                        src={src()}
+                        alt=""
+                        class="absolute inset-0 h-full w-full object-contain"
+                        onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                        }}
+                    />
+                )}
+            </Show>
+        </span>
+    );
+};
+
 const SkillEarlySection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
+    const [showEvidence, setShowEvidence] = createSignal(false);
     const lookup = createMemo(() => {
         const byCell = new Map<string, LolmixRecommendationEntry>();
         const recommended = new Map<number, LolmixRecommendationEntry>();
@@ -1129,72 +1510,86 @@ const SkillEarlySection: Component<{
             fallback={<EmptyState>No early skill data</EmptyState>}
         >
             <div class="flex flex-col gap-2">
-                <div class="flex flex-wrap items-center gap-2 text-xs uppercase text-neutral-500">
-                    <span>Recommended order</span>
-                    <div class="flex gap-1">
-                        <For each={LOLMIX_SKILL_EARLY_LEVELS}>
-                            {(level) => (
-                                <span
-                                    class={cn(
-                                        "grid h-6 w-6 place-items-center rounded text-xs font-bold",
-                                        recommendedFor(level)
-                                            ? "bg-winrate-good text-neutral-950"
-                                            : "bg-neutral-800 text-neutral-600",
-                                    )}
-                                    title={`Level ${level}`}
-                                >
-                                    {recommendedFor(level) ?? "-"}
-                                </span>
-                            )}
-                        </For>
-                    </div>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full min-w-[18rem] border-separate border-spacing-1">
-                        <thead>
-                            <tr>
-                                <th class="w-6" />
-                                <For each={LOLMIX_SKILL_EARLY_LEVELS}>
-                                    {(level) => (
-                                        <th class="text-center text-[10px] font-medium text-neutral-500">
-                                            {level}
-                                        </th>
-                                    )}
-                                </For>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <For each={LOLMIX_SKILL_EARLY_SLOTS}>
-                                {(slot) => (
-                                    <tr>
-                                        <td class="text-center text-xs font-bold text-neutral-400">
-                                            {slot}
-                                        </td>
-                                        <For each={LOLMIX_SKILL_EARLY_LEVELS}>
-                                            {(level) => (
-                                                <SkillEarlyCell
-                                                    entry={entryFor(
-                                                        level,
-                                                        slot,
-                                                    )}
-                                                    recommended={
-                                                        recommendedFor(
-                                                            level,
-                                                        ) === slot
-                                                    }
-                                                />
-                                            )}
-                                        </For>
-                                    </tr>
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-md bg-neutral-950/30 px-2.5 py-2">
+                    <div class="flex flex-wrap items-center gap-2 text-xs uppercase text-neutral-500">
+                        <span>Recommended order</span>
+                        <div class="flex gap-1">
+                            <For each={LOLMIX_SKILL_EARLY_LEVELS}>
+                                {(level) => (
+                                    <span
+                                        class={cn(
+                                            "grid h-7 w-7 place-items-center rounded text-sm font-bold",
+                                            recommendedFor(level)
+                                                ? "bg-winrate-good text-neutral-950"
+                                                : "bg-neutral-800 text-neutral-600",
+                                        )}
+                                        title={`Level ${level}`}
+                                    >
+                                        {recommendedFor(level) ?? "-"}
+                                    </span>
                                 )}
                             </For>
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        class="text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
+                        aria-expanded={showEvidence()}
+                        onClick={() => setShowEvidence(!showEvidence())}
+                    >
+                        {showEvidence() ? "Hide comparison" : "Compare skills"}
+                    </button>
                 </div>
-                <p class="font-body text-[11px] text-neutral-600">
-                    Cells show score and PR. Outlined cells are the best
-                    eligible skill at that level.
-                </p>
+                <Show when={showEvidence()}>
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[18rem] border-separate border-spacing-1">
+                            <thead>
+                                <tr>
+                                    <th class="w-6" />
+                                    <For each={LOLMIX_SKILL_EARLY_LEVELS}>
+                                        {(level) => (
+                                            <th class="text-center text-[10px] font-medium text-neutral-500">
+                                                {level}
+                                            </th>
+                                        )}
+                                    </For>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <For each={LOLMIX_SKILL_EARLY_SLOTS}>
+                                    {(slot) => (
+                                        <tr>
+                                            <td class="text-center text-xs font-bold text-neutral-400">
+                                                {slot}
+                                            </td>
+                                            <For
+                                                each={LOLMIX_SKILL_EARLY_LEVELS}
+                                            >
+                                                {(level) => (
+                                                    <SkillEarlyCell
+                                                        entry={entryFor(
+                                                            level,
+                                                            slot,
+                                                        )}
+                                                        recommended={
+                                                            recommendedFor(
+                                                                level,
+                                                            ) === slot
+                                                        }
+                                                    />
+                                                )}
+                                            </For>
+                                        </tr>
+                                    )}
+                                </For>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="font-body text-[11px] text-neutral-600">
+                        Cells show score and PR. Outlined cells are the best
+                        eligible skill at that level.
+                    </p>
+                </Show>
             </div>
         </Show>
     );
@@ -1444,7 +1839,7 @@ const BuildOptionRow: Component<{
 }> = (props) => (
     <div
         class={cn(
-            "flex min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-xs",
+            "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-md px-2.5 py-2 text-xs sm:flex",
             props.item.recommended
                 ? "bg-neutral-800/60 ring-1 ring-neutral-700"
                 : "bg-neutral-950/25",
@@ -1459,9 +1854,11 @@ const BuildOptionRow: Component<{
             {props.item.entry.name}
         </span>
         <EntryBadge item={props.item} />
-        <EntryStats entry={props.item.entry} />
-        <ScoreChip value={props.item.entry.score} />
-        <SamplePill value={props.item.entry.total_n_max} />
+        <div class="col-span-2 col-start-2 flex min-w-0 items-center justify-between gap-2 sm:contents">
+            <EntryStats entry={props.item.entry} />
+            <ScoreChip value={props.item.entry.score} />
+            <SamplePill value={props.item.entry.total_n_max} />
+        </div>
     </div>
 );
 
@@ -1634,17 +2031,20 @@ const WinningItemsSection: Component<{
     section: LolmixRecommendationSection;
 }> = (props) => {
     const [openIndex, setOpenIndex] = createSignal<number>();
-    const entries = () =>
+    const [expanded, setExpanded] = createSignal(false);
+    const allEntries = () =>
         lolmixDisplayEntries(props.section, { headline: "combined_wr" });
+    const entries = () =>
+        expanded() ? allEntries() : allEntries().slice(0, 6);
     const minWr = () =>
-        Math.min(...entries().map((item) => item.entry.combined_wr));
+        Math.min(...allEntries().map((item) => item.entry.combined_wr));
     const maxWr = () =>
-        Math.max(...entries().map((item) => item.entry.combined_wr));
+        Math.max(...allEntries().map((item) => item.entry.combined_wr));
     const span = () => Math.max(0.0001, maxWr() - minWr());
 
     return (
         <Show
-            when={entries().length > 0}
+            when={allEntries().length > 0}
             fallback={
                 <EmptyState>No standout items for this matchup</EmptyState>
             }
@@ -1773,6 +2173,18 @@ const WinningItemsSection: Component<{
                         );
                     }}
                 </For>
+                <Show when={allEntries().length > 6}>
+                    <button
+                        type="button"
+                        class="mt-2 self-start text-xs font-semibold uppercase text-blue-300 hover:text-blue-200"
+                        aria-expanded={expanded()}
+                        onClick={() => setExpanded(!expanded())}
+                    >
+                        {expanded()
+                            ? "Show top items"
+                            : `Show ${allEntries().length - 6} more items`}
+                    </button>
+                </Show>
             </div>
         </Show>
     );
@@ -1929,17 +2341,22 @@ const RuneMetricsBoard: Component<{
         >
             <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
                 <SelectedRunePathSummary
+                    dataset={props.dataset}
                     label="Primary"
                     path={selectedPrimaryPath()}
                     runes={selectedPrimaryRunes()}
                 />
                 <div class="grid grid-cols-1 gap-3">
                     <SelectedRunePathSummary
+                        dataset={props.dataset}
                         label="Secondary"
                         path={selectedSecondaryPath()}
                         runes={selectedSecondaryRunes()}
                     />
-                    <SelectedStatShardSummary rows={selectedShardRows()} />
+                    <SelectedStatShardSummary
+                        dataset={props.dataset}
+                        rows={selectedShardRows()}
+                    />
                 </div>
             </div>
         </Show>
@@ -1947,6 +2364,7 @@ const RuneMetricsBoard: Component<{
 };
 
 const SelectedRunePathSummary: Component<{
+    dataset: Dataset;
     label: string;
     path: RunePathRecord | undefined;
     runes: SelectedRuneMetric[];
@@ -1978,6 +2396,10 @@ const SelectedRunePathSummary: Component<{
                                     : undefined
                             }
                             entry={rune.entry}
+                            dataset={props.dataset}
+                            keystone={
+                                props.label === "Primary" && index() === 0
+                            }
                             name={rune.name}
                         />
                     )}
@@ -1988,6 +2410,7 @@ const SelectedRunePathSummary: Component<{
 );
 
 const SelectedStatShardSummary: Component<{
+    dataset: Dataset;
     rows: SelectedShardMetric[];
 }> = (props) => (
     <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2">
@@ -2007,8 +2430,10 @@ const SelectedStatShardSummary: Component<{
                     {(row) => (
                         <RuneMetricRow
                             badge={SHARD_SLOT_LABELS[row.slot]}
+                            dataset={props.dataset}
                             entry={row.entry}
                             name={row.shard.name}
+                            shardKey={row.shard.key}
                         />
                     )}
                 </For>
@@ -2019,25 +2444,36 @@ const SelectedStatShardSummary: Component<{
 
 const RuneMetricRow: Component<{
     badge: string | undefined;
+    dataset: Dataset;
     entry: LolmixRecommendationEntry | undefined;
+    keystone?: boolean;
     name: string;
+    shardKey?: string;
 }> = (props) => (
     <div
         class="min-w-0 rounded border border-neutral-800 bg-neutral-950/40 px-2 py-1.5"
         title={props.name}
     >
-        <div class="flex min-w-0 items-start justify-between gap-2">
-            <div class="min-w-0">
-                <div class="truncate text-xs font-semibold leading-tight text-neutral-100">
-                    {props.name}
+        <div class="flex min-w-0 items-center justify-between gap-2">
+            <div class="flex min-w-0 items-center gap-2">
+                <RuneNameIcon
+                    dataset={props.dataset}
+                    name={props.name}
+                    keystone={props.keystone}
+                    shardKey={props.shardKey}
+                />
+                <div class="min-w-0">
+                    <div class="truncate text-xs font-semibold leading-tight text-neutral-100">
+                        {props.name}
+                    </div>
+                    <Show when={props.badge}>
+                        {(badge) => (
+                            <div class="mt-0.5 text-[10px] uppercase text-neutral-500">
+                                {badge()}
+                            </div>
+                        )}
+                    </Show>
                 </div>
-                <Show when={props.badge}>
-                    {(badge) => (
-                        <div class="mt-0.5 text-[10px] uppercase text-neutral-500">
-                            {badge()}
-                        </div>
-                    )}
-                </Show>
             </div>
             <Show
                 when={props.entry}
@@ -2063,7 +2499,9 @@ const RuneMetricRow: Component<{
             {(entry) => (
                 <div class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] uppercase text-neutral-500">
                     <span>PR {formatLolmixPercent(entry().combined_pr)}</span>
-                    <span>N {formatLolmixCompactCount(entry().total_n_max)}</span>
+                    <span>
+                        N {formatLolmixCompactCount(entry().total_n_max)}
+                    </span>
                 </div>
             )}
         </Show>
@@ -2236,11 +2674,15 @@ function quickDecisionTiles(
     if (rune) {
         const keystone = lolmixRunePageKeystoneName(rune.name, data, dataset);
         const page = parseLolmixReadableRunePage(rune.name);
+        const metrics = lolmixRunePageMetrics(rune);
         tiles.push({
             label: keystone ? "Keystone" : "Rune page",
             value:
                 keystone ?? page?.primaryPathName ?? page?.kind ?? "Rune page",
-            sub: lolmixRunePageMetrics(rune).summary,
+            sub:
+                metrics.mode === "optimal"
+                    ? `Coverage ${formatLolmixPercent(rune.combined_pr)} / N ${formatLolmixCompactCount(rune.total_n_max)}`
+                    : metrics.summary,
             score: rune.score,
         });
     }

@@ -306,25 +306,25 @@ export function lolmixTopEntry(
     );
 }
 
-export function lolmixRunePageHeadline(
-    section: LolmixRecommendationSection | undefined,
-): LolmixHeadlineMetric {
-    return section?.entries.some(isLolmixOptimalRunePage)
-        ? "score"
-        : "combined_wr";
+export function lolmixRunePageHeadline(): LolmixHeadlineMetric {
+    // Rune-page win rates can come from very different matchup samples. The
+    // server score is the comparable recommendation signal across both legacy
+    // observed pages and model-generated optimal pages; WR remains supporting
+    // evidence in the UI.
+    return "score";
 }
 
 export function lolmixRunePageRecommendedEntry(
     section: LolmixRecommendationSection | undefined,
 ) {
-    return lolmixRecommendedEntry(section, lolmixRunePageHeadline(section));
+    return lolmixRecommendedEntry(section, lolmixRunePageHeadline());
 }
 
 export function lolmixRunePageDisplayEntries(
     section: LolmixRecommendationSection,
 ) {
     return lolmixDisplayEntries(section, {
-        headline: lolmixRunePageHeadline(section),
+        headline: lolmixRunePageHeadline(),
     });
 }
 
