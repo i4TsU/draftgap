@@ -13,7 +13,8 @@ use tauri::async_runtime::Mutex;
 
 struct AppState {
     lcu_data: Mutex<Option<LcuData>>,
-    client: Client,
+    lcu_client: Client,
+    lolalytics_client: Client,
 }
 
 #[derive(Serialize, Debug)]
@@ -158,7 +159,7 @@ async fn get_lcu_response(
     let lcu_data = lcu_data_mutex.as_ref().unwrap();
 
     let res = state
-        .client
+        .lcu_client
         .get(format!("https://127.0.0.1:{}/{}", lcu_data.port, path))
         .basic_auth(&lcu_data.username, Some(&lcu_data.password))
         .send()
@@ -221,7 +222,7 @@ async fn fetch_lolalytics_page(
     }
 
     let res = state
-        .client
+        .lolalytics_client
         .get(parsed)
         .header(
             "user-agent",
@@ -278,14 +279,19 @@ async fn get_pickable_champion_ids(state: tauri::State<'_, AppState>) -> Result<
 }
 
 fn main() {
-    let client = Client::builder()
+    let lcu_client = Client::builder()
         .danger_accept_invalid_certs(true)
         .build()
-        .expect("Could not build client");
+        .expect("Could not build LCU client");
+
+    let lolalytics_client = Client::builder()
+        .build()
+        .expect("Could not build Lolalytics client");
 
     let state = AppState {
         lcu_data: Mutex::new(None),
-        client,
+        lcu_client,
+        lolalytics_client,
     };
 
     tauri::Builder::default()

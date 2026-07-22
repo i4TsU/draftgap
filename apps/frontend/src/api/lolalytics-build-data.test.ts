@@ -9,6 +9,10 @@ import {
     buildLolalyticsChampionUrl,
     getLolalyticsChampion,
 } from "../../../dataset/src/lolalytics/champion";
+import {
+    fetchLolalyticsPageText,
+    lolalyticsProxyUrlForPage,
+} from "./lolalytics-api";
 
 const champion = (key: number, id: string, name: string): ChampionData => ({
     id,
@@ -69,6 +73,47 @@ function lolalyticsHtml(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Lolalytics build data fetch", () => {
+    test("builds same-origin proxy URLs for browser page fetches", () => {
+        const pageUrl =
+            "https://lolalytics.com/lol/qiyana/vs/garen/build/?lane=bottom&tier=all&patch=16.13&vslane=top";
+
+        expect(lolalyticsProxyUrlForPage(pageUrl)).toBe(
+            "/api/lolalytics/lol/qiyana/vs/garen/build/?lane=bottom&tier=all&patch=16.13&vslane=top",
+        );
+        expect(
+            lolalyticsProxyUrlForPage(
+                pageUrl,
+                "https://draftgap.example/proxy/lolalytics/",
+            ),
+        ).toBe(
+            "https://draftgap.example/proxy/lolalytics/lol/qiyana/vs/garen/build/?lane=bottom&tier=all&patch=16.13&vslane=top",
+        );
+    });
+
+    test("fetches browser pages through the configured proxy", async () => {
+        const urls: string[] = [];
+        const text = await fetchLolalyticsPageText(
+            "https://lolalytics.com/lol/qiyana/build/?lane=bottom&tier=all&patch=30",
+            async (input) => {
+                urls.push(String(input));
+                return new Response("proxied html");
+            },
+        );
+
+        expect(text).toBe("proxied html");
+        expect(urls).toEqual([
+            "/api/lolalytics/lol/qiyana/build/?lane=bottom&tier=all&patch=30",
+        ]);
+    });
+
+    test("rejects unsupported browser proxy targets", () => {
+        expect(() =>
+            lolalyticsProxyUrlForPage(
+                "https://example.com/lol/qiyana/build/?lane=bottom",
+            ),
+        ).toThrow("Only https://lolalytics.com/lol/...");
+    });
+
     test("builds public Lolalytics champion and matchup page URLs", () => {
         expect(
             buildLolalyticsChampionUrl(
