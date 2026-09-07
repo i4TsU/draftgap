@@ -32,8 +32,24 @@ export function createBuildContext() {
         team: Team;
         index: number;
     }>();
+    const [selectedEntity, _setSelectedEntity] = createSignal<
+        BuildEntity | undefined
+    >();
+    const [showSelectedEntity, setShowSelectedEntity] = createSignal(false);
 
     function setBuildPick(pick: { team: Team; index: number } | undefined) {
+        const previous = buildPick();
+        if (
+            previous?.team === pick?.team &&
+            previous?.index === pick?.index
+        ) {
+            return;
+        }
+
+        // An entity belongs to the previous champion's build. Clear it before
+        // switching tabs/champions so a hidden dialog cannot retain stale data.
+        _setSelectedEntity(undefined);
+        setShowSelectedEntity(false);
         const teamPicks = pick?.team === "ally" ? allyTeam : opponentTeam;
         const teamComp =
             pick?.team === "ally" ? allyTeamComp() : opponentTeamComp();
@@ -64,14 +80,13 @@ export function createBuildContext() {
         if (championKey) return;
 
         _setBuildPick(undefined);
+        _setSelectedEntity(undefined);
+        setShowSelectedEntity(false);
     });
 
-    const [selectedEntity, _setSelectedEntity] = createSignal<
-        BuildEntity | undefined
-    >();
-    const [showSelectedEntity, setShowSelectedEntity] = createSignal(false);
     const setSelectedEntity = (entity: BuildEntity | undefined) => {
         if (!entity) {
+            _setSelectedEntity(undefined);
             setShowSelectedEntity(false);
             return;
         }
@@ -135,7 +150,7 @@ export function createBuildContext() {
                 championKey()!,
                 championRole()!,
                 theirTeamComp()!,
-                { fetchText: fetchLolalyticsPageText },
+                { fetchText: fetchLolalyticsPageText, signal: ctx.signal },
             );
         },
         refetchInterval: false,
@@ -153,6 +168,14 @@ export function createBuildContext() {
         }
     });
 
+    createEffect(() => {
+        if (currentDraftView().type !== "builds") {
+            void queryClient.cancelQueries({ queryKey: ["build"] });
+            _setSelectedEntity(undefined);
+            setShowSelectedEntity(false);
+        }
+    });
+
     const partialBuildDataset = () => query.data?.[0];
     const fullBuildDataset = () => query.data?.[1];
 
@@ -161,7 +184,12 @@ export function createBuildContext() {
     (window as any).DRAFTGAP_DEBUG.partialBuildDataset = partialBuildDataset;
 
     const buildAnalysisResult = createMemo(() => {
-        if (!query.data || !dataset() || !dataset30Days()) {
+        if (
+            currentDraftView().type !== "builds" ||
+            !query.data ||
+            !dataset() ||
+            !dataset30Days()
+        ) {
             return;
         }
         return analyzeBuild(

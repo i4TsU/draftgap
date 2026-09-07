@@ -75,6 +75,10 @@ export type LolmixRecommendationEntry = {
     overall_n: number;
     combined_wr: number;
     combined_pr: number;
+    context_wr?: number;
+    context_delta?: number;
+    context_pr?: number;
+    context_coverage?: number;
     min_delta: number;
     max_delta: number;
     total_n_max: number;
@@ -489,23 +493,33 @@ export async function fetchLolmixRecommendations(
     endpoint: string,
     payload: LolmixAnalyzeRequest,
     fetcher: LolmixFetch = fetch,
+    signal?: AbortSignal,
 ): Promise<LolmixClientResult> {
     let response: Response;
     const controller = new AbortController();
+    const onAbort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) controller.abort(signal.reason);
     const timer = setTimeout(
         () => controller.abort(),
         LOLMIX_REQUEST_TIMEOUT_MS,
     );
     try {
-        response = await fetcher(endpoint, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-            signal: controller.signal,
-        });
+        response = await withAbort(
+            fetcher(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+                signal: controller.signal,
+            }),
+            signal,
+        );
     } catch (error) {
+        if (signal?.aborted) {
+            throw signal.reason ?? error;
+        }
         if (controller.signal.aborted) {
             return {
                 status: "unavailable",
@@ -521,6 +535,7 @@ export async function fetchLolmixRecommendations(
         };
     } finally {
         clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
     }
 
     const body = await readJson(response);
@@ -552,6 +567,25 @@ export async function fetchLolmixRecommendations(
         status: "success",
         data: parsed,
     };
+}
+
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise;
+    if (signal.aborted) {
+        return Promise.reject(
+            signal.reason ?? new DOMException("Aborted", "AbortError"),
+        );
+    }
+    return new Promise<T>((resolve, reject) => {
+        const onAbort = () =>
+            reject(
+                signal.reason ?? new DOMException("Aborted", "AbortError"),
+            );
+        signal.addEventListener("abort", onAbort, { once: true });
+        promise.then(resolve, reject).finally(() => {
+            signal.removeEventListener("abort", onAbort);
+        });
+    });
 }
 
 export function parseLolmixResponse(
@@ -714,10 +748,22 @@ function parseEntry(value: unknown): LolmixRecommendationEntry | undefined {
         "total_n_max",
     ] as const;
 
+    const contextualNumericFields = [
+        "context_wr",
+        "context_delta",
+        "context_pr",
+        "context_coverage",
+    ] as const;
+
     if (
         typeof record.name !== "string" ||
         typeof record.section !== "string" ||
-        numericFields.some((field) => typeof record[field] !== "number")
+        numericFields.some((field) => typeof record[field] !== "number") ||
+        contextualNumericFields.some(
+            (field) =>
+                record[field] !== undefined &&
+                typeof record[field] !== "number",
+        )
     ) {
         return;
     }
@@ -733,6 +779,10 @@ function parseEntry(value: unknown): LolmixRecommendationEntry | undefined {
         overall_n: record.overall_n,
         combined_wr: record.combined_wr,
         combined_pr: record.combined_pr,
+        context_wr: record.context_wr,
+        context_delta: record.context_delta,
+        context_pr: record.context_pr,
+        context_coverage: record.context_coverage,
         min_delta: record.min_delta,
         max_delta: record.max_delta,
         total_n_max: record.total_n_max,

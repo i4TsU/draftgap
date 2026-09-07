@@ -4,7 +4,8 @@ export function ratingToWinrate(d: number) {
 
 // Get rating difference from winrate
 export function winrateToRating(w: number) {
-    return -400 * Math.log10(1 / w - 1);
+    const bounded = Math.max(0.0001, Math.min(0.9999, w));
+    return -400 * Math.log10(1 / bounded - 1);
 }
 
 // Get winrate for w1 against w2

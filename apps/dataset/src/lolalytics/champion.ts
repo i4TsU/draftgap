@@ -4,13 +4,17 @@ import { type LolalyticsRole } from "./roles";
 const LOLALYTICS_BASE_URL = "https://lolalytics.com/lol";
 const DEFAULT_TIER = "all";
 
-export type LolalyticsFetchText = (url: string) => Promise<string>;
+export type LolalyticsFetchText = (
+    url: string,
+    signal?: AbortSignal,
+) => Promise<string>;
 
 export type LolalyticsChampionFetchOptions = {
     championId?: string;
     matchupId?: string;
     tier?: string;
     fetchText?: LolalyticsFetchText;
+    signal?: AbortSignal;
 };
 
 export interface LolalyticsChampionResponse {
@@ -278,12 +282,19 @@ function normalizeChampionSlug(championId: string) {
 async function fetchLolalyticsText(
     url: string,
     fetchText?: LolalyticsFetchText,
+    signal?: AbortSignal,
 ) {
     if (fetchText) {
-        return await fetchText(url);
+        throwIfAborted(signal);
+        return await withAbort(
+            Promise.resolve().then(() => fetchText(url, signal)),
+            signal,
+        );
     }
 
-    const res = await retry(() => fetch(url));
+    const res = signal
+        ? await fetch(url, { signal })
+        : await retry(() => fetch(url));
     if (!res.ok) {
         throw new Error(
             `Failed to fetch lolalytics champion ${url} ${res.status}`,
@@ -291,11 +302,37 @@ async function fetchLolalyticsText(
     }
 
     const text = await res.text();
+    throwIfAborted(signal);
     if (!text) {
         throw new Error(`No text for lolalytics champion ${url}`);
     }
 
     return text;
+}
+
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise;
+    if (signal?.aborted) {
+        return Promise.reject(
+            signal.reason ?? new DOMException("Aborted", "AbortError"),
+        );
+    }
+    return new Promise<T>((resolve, reject) => {
+        const onAbort = () =>
+            reject(
+                signal.reason ?? new DOMException("Aborted", "AbortError"),
+            );
+        signal.addEventListener("abort", onAbort, { once: true });
+        promise.then(resolve, reject).finally(() => {
+            signal.removeEventListener("abort", onAbort);
+        });
+    });
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+    if (signal?.aborted) {
+        throw signal.reason ?? new DOMException("Aborted", "AbortError");
+    }
 }
 
 function extractQwikPagePayload(text: string) {
@@ -418,7 +455,11 @@ export async function getLolalyticsChampion(
         matchupRole,
         options.tier ?? DEFAULT_TIER,
     );
-    const text = await fetchLolalyticsText(url, options.fetchText);
+    const text = await fetchLolalyticsText(
+        url,
+        options.fetchText,
+        options.signal,
+    );
 
     try {
         return normalizeLolalyticsChampionResponse(

@@ -109,6 +109,38 @@ describe("Lolalytics build data fetch", () => {
         expect(data.header.wr).toBe(51.2);
     });
 
+    test("passes query cancellation through to the page fetcher", async () => {
+        const controller = new AbortController();
+        let receivedSignal: AbortSignal | undefined;
+        let resolveText!: (text: string) => void;
+        const pendingText = new Promise<string>((resolve) => {
+            resolveText = resolve;
+        });
+
+        const request = getLolalyticsChampion(
+            "30",
+            "246",
+            "bottom",
+            undefined,
+            undefined,
+            {
+                championId: "Qiyana",
+                fetchText: async (_url, signal) => {
+                    receivedSignal = signal;
+                    return pendingText;
+                },
+                signal: controller.signal,
+            },
+        );
+
+        await Promise.resolve();
+        controller.abort();
+        await expect(request).rejects.toBeDefined();
+        resolveText(lolalyticsHtml());
+
+        expect(receivedSignal).toBe(controller.signal);
+    });
+
     test("fetchBuildData defaults to all tiers over the last 30 days", async () => {
         const urls: string[] = [];
 

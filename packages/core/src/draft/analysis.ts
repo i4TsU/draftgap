@@ -6,6 +6,15 @@ import { RiskLevel, priorGamesByRiskLevel } from "../risk/risk-level";
 import { addStats, averageStats } from "../stats";
 import { getStats } from "./utils";
 
+// Same-role is the direct lane counter; cross-role data remains composition
+// context and receives a smaller contribution.
+export const DIRECT_LANE_MATCHUP_WEIGHT = 1.35;
+export const CROSS_ROLE_MATCHUP_WEIGHT = 0.85;
+
+function safeWinrate(wins: number, games: number) {
+    return games > 0 ? wins / games : 0.5;
+}
+
 export type DraftResult = {
     allyChampionRating: AnalyzeChampionsResult;
     enemyChampionRating: AnalyzeChampionsResult;
@@ -146,7 +155,7 @@ export function analyzeChampion(
         // TOOD: if 30 days has no games, add other prior games
     );
 
-    const rating = winrateToRating(stats.wins / stats.games);
+    const rating = winrateToRating(safeWinrate(stats.wins, stats.games));
 
     return {
         role,
@@ -237,7 +246,10 @@ export function analyzeDuos(
                 wins:
                     ratingToWinrate(
                         winrateToRating(
-                            combinedStats.wins / combinedStats.games,
+                            safeWinrate(
+                                combinedStats.wins,
+                                combinedStats.games,
+                            ),
                         ) - expectedRating,
                     ) * combinedStats.games,
                 games: combinedStats.games,
@@ -260,6 +272,7 @@ export type AnalyzeMatchupResult = {
     rating: number;
     wins: number;
     games: number;
+    weight: number;
 };
 
 export type AnalyzeMatchupsResult = {
@@ -274,7 +287,8 @@ export function analyzeMatchups(
     priorGames: number,
 ): AnalyzeMatchupsResult {
     const matchupResults: AnalyzeMatchupResult[] = [];
-    let totalRating = 0;
+    const directRatings: number[] = [];
+    const crossRatings: number[] = [];
 
     for (const [allyRole, allyChampionKey] of team) {
         for (const [enemyRole, enemyChampionKey] of enemy) {
@@ -330,10 +344,17 @@ export function analyzeMatchups(
                     games: priorGames,
                 },
             );
-            const winrate = adjustedStats.wins / adjustedStats.games;
+            const winrate = safeWinrate(
+                adjustedStats.wins,
+                adjustedStats.games,
+            );
 
             const actualRating = winrateToRating(winrate);
             const rating = actualRating - expectedRating;
+            const weight =
+                allyRole === enemyRole
+                    ? DIRECT_LANE_MATCHUP_WEIGHT
+                    : CROSS_ROLE_MATCHUP_WEIGHT;
 
             matchupResults.push({
                 roleA: allyRole,
@@ -343,16 +364,40 @@ export function analyzeMatchups(
                 rating,
                 wins:
                     ratingToWinrate(
-                        winrateToRating(wins / games) - expectedRating,
+                        winrateToRating(safeWinrate(wins, games)) -
+                            expectedRating,
                     ) * games,
                 games,
+                weight,
             });
-            totalRating += rating;
+            if (allyRole === enemyRole) {
+                directRatings.push(rating);
+            } else {
+                crossRatings.push(rating);
+            }
         }
     }
+
+    // The 5x5 matrix contains one direct lane pair and up to 24 contextual
+    // pairs. Average each group before applying its group weight so the
+    // contextual rows cannot drown out the direct lane signal simply because
+    // there are more of them.
+    const rowCount = directRatings.length + crossRatings.length;
+    const weightedRowCount =
+        directRatings.length * DIRECT_LANE_MATCHUP_WEIGHT +
+        crossRatings.length * CROSS_ROLE_MATCHUP_WEIGHT;
+    const weightedTotal =
+        DIRECT_LANE_MATCHUP_WEIGHT * sum(directRatings) +
+        CROSS_ROLE_MATCHUP_WEIGHT * sum(crossRatings);
+    const totalRating =
+        weightedRowCount > 0 ? (weightedTotal / weightedRowCount) * rowCount : 0;
 
     return {
         matchupResults,
         totalRating,
     };
+}
+
+function sum(values: number[]) {
+    return values.reduce((total, value) => total + value, 0);
 }

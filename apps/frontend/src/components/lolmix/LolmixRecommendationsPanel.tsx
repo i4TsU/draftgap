@@ -973,8 +973,27 @@ const RunePageDetail: Component<{
                         <Match when={true}>
                             <span class="text-xs uppercase text-neutral-500">
                                 PR{" "}
-                                {formatLolmixPercent(props.entry.combined_pr)}
+                                {formatLolmixPercent(
+                                    props.entry.context_pr ??
+                                        props.entry.combined_pr,
+                                )}
                             </span>
+                            <Show
+                                when={
+                                    (props.entry.context_coverage ?? 0) > 0
+                                }
+                            >
+                                <span
+                                    class={lolmixScoreClass(
+                                        props.entry.context_delta ?? 0,
+                                    )}
+                                >
+                                    Δ{" "}
+                                    {formatLolmixSignedPercent(
+                                        props.entry.context_delta ?? 0,
+                                    )}
+                                </span>
+                            </Show>
                             <ScoreChip value={props.entry.score} />
                             <SamplePill value={props.entry.total_n_max} />
                         </Match>
@@ -2051,10 +2070,15 @@ const RuneMetricRow: Component<{
                     <span
                         class={cn(
                             "shrink-0 text-xs font-semibold uppercase tabular-nums",
-                            lolmixWinrateTextClass(entry().combined_wr),
+                            lolmixWinrateTextClass(
+                                entry().context_wr ?? entry().combined_wr,
+                            ),
                         )}
                     >
-                        WR {formatLolmixPercent(entry().combined_wr)}
+                        WR{" "}
+                        {formatLolmixPercent(
+                            entry().context_wr ?? entry().combined_wr,
+                        )}
                     </span>
                 )}
             </Show>
@@ -2062,8 +2086,25 @@ const RuneMetricRow: Component<{
         <Show when={props.entry}>
             {(entry) => (
                 <div class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] uppercase text-neutral-500">
-                    <span>PR {formatLolmixPercent(entry().combined_pr)}</span>
-                    <span>N {formatLolmixCompactCount(entry().total_n_max)}</span>
+                    <span>
+                        PR{" "}
+                        {formatLolmixPercent(
+                            entry().context_pr ?? entry().combined_pr,
+                        )}
+                    </span>
+                    <Show when={entry().context_delta !== undefined}>
+                        <span
+                            class={lolmixScoreClass(entry().context_delta ?? 0)}
+                        >
+                            Δ{" "}
+                            {formatLolmixSignedPercent(
+                                entry().context_delta ?? 0,
+                            )}
+                        </span>
+                    </Show>
+                    <span>
+                        N {formatLolmixCompactCount(entry().total_n_max)}
+                    </span>
                 </div>
             )}
         </Show>

@@ -1,5 +1,11 @@
-import { createQuery } from "@tanstack/solid-query";
-import { JSXElement, createContext, createMemo, useContext } from "solid-js";
+import { createQuery, useQueryClient } from "@tanstack/solid-query";
+import {
+    JSXElement,
+    createContext,
+    createEffect,
+    createMemo,
+    useContext,
+} from "solid-js";
 import type {
     LolmixClientResult,
     LolmixConnectionState,
@@ -48,6 +54,7 @@ export function createLolmixContext() {
     const { allyTeamComp, opponentTeamComp } = useDraftAnalysis();
     const { buildPick } = useBuild();
     const { currentDraftView } = useDraftView();
+    const queryClient = useQueryClient();
 
     const serverConfig = createMemo(() =>
         lolmixServerConfig(config.lolmixServerHost, config.lolmixServerPort),
@@ -125,7 +132,7 @@ export function createLolmixContext() {
                 currentEndpoint,
                 currentRequest.ok ? currentRequest.payload : currentRequest,
             ],
-            queryFn: async () => {
+            queryFn: async ({ signal }) => {
                 if (!currentRequest.ok) {
                     return {
                         status: "unexpected-error",
@@ -142,6 +149,8 @@ export function createLolmixContext() {
                 return fetchLolmixRecommendations(
                     currentEndpoint,
                     currentRequest.payload,
+                    fetch,
+                    signal,
                 );
             },
             get enabled() {
@@ -158,6 +167,12 @@ export function createLolmixContext() {
             refetchOnReconnect: false,
             retry: false,
         };
+    });
+
+    createEffect(() => {
+        if (currentDraftView().type !== "builds") {
+            void queryClient.cancelQueries({ queryKey: ["lolmix"] });
+        }
     });
 
     const state = createMemo<LolmixRecommendationsState>(() => {

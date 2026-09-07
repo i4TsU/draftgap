@@ -9,10 +9,7 @@ export type LolmixDecisionPhase = "now" | "core" | "matchup" | "details";
 export type LolmixHeadlineMetric = "score" | "combined_wr";
 export type LolmixRunePageKind = "pick" | "win" | "optimal";
 type LolmixCompletedItemSection =
-    | "first_completed_item"
-    | "second_item"
-    | "third_item"
-    | "fourth_item";
+    "first_completed_item" | "second_item" | "third_item" | "fourth_item";
 type LolmixSectionRenderer =
     | "summoners"
     | "runes"
@@ -135,7 +132,6 @@ const LOLMIX_BACKING_RUNE_SECTIONS = new Set([
 export const LOLMIX_MIN_RECOMMENDED_PICK_RATE = 0.0001;
 export const LOLMIX_VIABLE_PICK_RATE_RATIO = 0.1;
 export const LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES = 4;
-export const LOLMIX_BUILD_PICK_CONFIDENCE_WEIGHT = 0.2;
 
 export const LOLMIX_COMPLETED_ITEM_SECTIONS = [
     "first_completed_item",
@@ -317,14 +313,53 @@ export function lolmixRunePageHeadline(
 export function lolmixRunePageRecommendedEntry(
     section: LolmixRecommendationSection | undefined,
 ) {
-    return lolmixRecommendedEntry(section, lolmixRunePageHeadline(section));
+    if (!section || section.entries.length === 0) return;
+
+    const optimal = sortedLolmixRunePageEntries(section).filter(
+        isLolmixOptimalRunePage,
+    );
+    if (optimal.length > 0) {
+        return optimal.find(isLolmixRecommendationEligible) ?? optimal[0];
+    }
+
+    return sortedLolmixRunePageEntries(section).find(
+        isLolmixRecommendationEligible,
+    );
 }
 
 export function lolmixRunePageDisplayEntries(
     section: LolmixRecommendationSection,
 ) {
-    return lolmixDisplayEntries(section, {
-        headline: lolmixRunePageHeadline(section),
+    const recommended = lolmixRunePageRecommendedEntry(section);
+    return sortedLolmixRunePageEntries(section).map((entry) => ({
+        entry,
+        recommended: recommended?.id === entry.id,
+        viable: isLolmixRecommendationEligible(entry),
+        rare: !isLolmixRecommendationEligible(entry),
+    }));
+}
+
+function sortedLolmixRunePageEntries(
+    section: LolmixRecommendationSection,
+) {
+    return [...section.entries].sort((left, right) => {
+        const leftOptimal = isLolmixOptimalRunePage(left);
+        const rightOptimal = isLolmixOptimalRunePage(right);
+        if (leftOptimal !== rightOptimal) return leftOptimal ? -1 : 1;
+
+        const leftValue = leftOptimal
+            ? left.score
+            : (left.context_wr ?? left.combined_wr);
+        const rightValue = rightOptimal
+            ? right.score
+            : (right.context_wr ?? right.combined_wr);
+        return (
+            rightValue - leftValue ||
+            (right.context_delta ?? 0) - (left.context_delta ?? 0) ||
+            (right.context_pr ?? right.combined_pr) -
+                (left.context_pr ?? left.combined_pr) ||
+            right.total_n_max - left.total_n_max
+        );
     });
 }
 
@@ -577,12 +612,15 @@ export function lolmixRunePageMetrics(
         };
     }
 
+    const contextualWr = entry.context_wr ?? entry.combined_wr;
+    const contextualPr = entry.context_pr ?? entry.combined_pr;
+
     return {
         mode: "observed",
         headlineLabel: "Win Rate",
-        headlineValue: formatLolmixPercent(entry.combined_wr),
-        headlineClass: lolmixWinrateClass(entry.combined_wr),
-        summary: `WR ${formatLolmixPercent(entry.combined_wr)} / PR ${formatLolmixPercent(entry.combined_pr)}`,
+        headlineValue: formatLolmixPercent(contextualWr),
+        headlineClass: lolmixWinrateClass(contextualWr),
+        summary: `WR ${formatLolmixPercent(contextualWr)} / PR ${formatLolmixPercent(contextualPr)}`,
     };
 }
 
@@ -785,7 +823,6 @@ function lolmixOptimizedCompletedItemPath(
     let best: {
         sectionName: string;
         entry: LolmixRecommendationEntry;
-        pickRateRatio: number;
     }[] = [];
 
     const visit = (
@@ -794,7 +831,6 @@ function lolmixOptimizedCompletedItemPath(
         choices: {
             sectionName: string;
             entry: LolmixRecommendationEntry;
-            pickRateRatio: number;
         }[],
     ) => {
         if (index >= pools.length) {
@@ -805,9 +841,6 @@ function lolmixOptimizedCompletedItemPath(
         }
 
         const pool = pools[index];
-        const maxPickRate = Math.max(
-            ...pool.candidates.map((entry) => entry.combined_pr),
-        );
         let picked = false;
         for (const entry of pool.candidates) {
             if (usedIds.has(entry.id)) continue;
@@ -817,7 +850,6 @@ function lolmixOptimizedCompletedItemPath(
             choices.push({
                 sectionName: pool.sectionName,
                 entry,
-                pickRateRatio: entry.combined_pr / maxPickRate,
             });
             visit(index + 1, usedIds, choices);
             choices.pop();
@@ -835,34 +867,27 @@ function lolmixOptimizedCompletedItemPath(
 }
 
 function isBetterCompletedPath(
-    candidate: { entry: LolmixRecommendationEntry; pickRateRatio: number }[],
-    current: { entry: LolmixRecommendationEntry; pickRateRatio: number }[],
+    candidate: { entry: LolmixRecommendationEntry }[],
+    current: { entry: LolmixRecommendationEntry }[],
 ) {
     const left = completedPathMetrics(candidate);
     const right = completedPathMetrics(current);
 
     if (left.count !== right.count) return left.count > right.count;
-    if (left.utility !== right.utility) return left.utility > right.utility;
     if (left.score !== right.score) return left.score > right.score;
     if (left.pickRate !== right.pickRate) return left.pickRate > right.pickRate;
     return left.sampleSize > right.sampleSize;
 }
 
-function completedPathMetrics(
-    path: { entry: LolmixRecommendationEntry; pickRateRatio: number }[],
-) {
+function completedPathMetrics(path: { entry: LolmixRecommendationEntry }[]) {
     return path.reduce(
         (total, choice) => ({
             count: total.count + 1,
             score: total.score + choice.entry.score,
-            utility:
-                total.utility +
-                choice.entry.score +
-                choice.pickRateRatio * LOLMIX_BUILD_PICK_CONFIDENCE_WEIGHT,
             pickRate: total.pickRate + choice.entry.combined_pr,
             sampleSize: total.sampleSize + lolmixSampleSize(choice.entry),
         }),
-        { count: 0, score: 0, utility: 0, pickRate: 0, sampleSize: 0 },
+        { count: 0, score: 0, pickRate: 0, sampleSize: 0 },
     );
 }
 

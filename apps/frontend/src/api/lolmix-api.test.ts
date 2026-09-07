@@ -90,6 +90,10 @@ const minimalResponse = {
                     overall_n: 1200,
                     combined_wr: 0.527,
                     combined_pr: 0.433,
+                    context_wr: 0.541,
+                    context_delta: 0.029,
+                    context_pr: 0.39,
+                    context_coverage: 0.67,
                     min_delta: -0.02,
                     max_delta: 0.04,
                     total_n_max: 1600,
@@ -301,6 +305,10 @@ describe("fetchLolmixRecommendations", () => {
         const entry = result.data.sections[0].entries[0];
         expect(entry.combined_wr).toBe(0.527);
         expect(entry.combined_pr).toBe(0.433);
+        expect(entry.context_wr).toBe(0.541);
+        expect(entry.context_delta).toBe(0.029);
+        expect(entry.context_pr).toBe(0.39);
+        expect(entry.context_coverage).toBe(0.67);
     });
 
     test("surfaces lolmix validation errors", async () => {

@@ -29,6 +29,7 @@ export type FetchBuildDataOptions = {
     patch?: string;
     tier?: string;
     fetchText?: LolalyticsFetchText;
+    signal?: AbortSignal;
 };
 
 function statsFromWinrateRow(
@@ -331,7 +332,7 @@ function getLolalyticsChampionOptions(
     matchup?: string,
     matchupId?: string,
     matchupRole?: LolalyticsRole,
-    options: Pick<FetchBuildDataOptions, "fetchText" | "tier"> = {},
+    options: Pick<FetchBuildDataOptions, "fetchText" | "tier" | "signal"> = {},
 ) {
     const tier = options.tier ?? DEFAULT_BUILD_DATA_TIER;
 
@@ -348,7 +349,7 @@ function getLolalyticsChampionOptions(
             matchupId,
             matchupRole,
         ],
-        queryFn: () =>
+        queryFn: ({ signal }) =>
             getLolalyticsChampion(
                 patch,
                 championKey,
@@ -360,6 +361,7 @@ function getLolalyticsChampionOptions(
                     matchupId,
                     tier,
                     fetchText: options.fetchText,
+                    signal: combineAbortSignals(signal, options.signal),
                 },
             ),
         staleTime: 1000 * 60 * 60, // 1 hour
@@ -390,7 +392,7 @@ export async function fetchBuildData(
             undefined,
             undefined,
             undefined,
-            { fetchText: options.fetchText, tier },
+            { fetchText: options.fetchText, tier, signal: options.signal },
         ),
     );
 
@@ -411,7 +413,11 @@ export async function fetchBuildData(
                         opponentChampionKey,
                         opponentChampion.id,
                         LOLALYTICS_ROLES[opponentRole],
-                        { fetchText: options.fetchText, tier },
+                        {
+                            fetchText: options.fetchText,
+                            tier,
+                            signal: options.signal,
+                        },
                     ),
                 )
                 .then((championData) => ({
@@ -444,4 +450,12 @@ export async function fetchBuildData(
     );
 
     return [partialDataset, fullDataset] as const;
+}
+
+function combineAbortSignals(
+    querySignal: AbortSignal,
+    parentSignal?: AbortSignal,
+) {
+    if (!parentSignal) return querySignal;
+    return AbortSignal.any([querySignal, parentSignal]);
 }

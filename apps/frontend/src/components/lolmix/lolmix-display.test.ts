@@ -273,12 +273,14 @@ describe("lolmix display helpers", () => {
             score: 0.01,
             combined_wr: 0.552,
             combined_pr: 0.3,
+            context_wr: 0.579,
+            context_pr: 0.26,
         });
         expect(lolmixRunePageMetrics(fallback)).toMatchObject({
             mode: "observed",
             headlineLabel: "Win Rate",
-            headlineValue: "55.2%",
-            summary: "WR 55.2% / PR 30.0%",
+            headlineValue: "57.9%",
+            summary: "WR 57.9% / PR 26.0%",
         });
     });
 
@@ -470,7 +472,9 @@ describe("lolmix display helpers", () => {
             .map((step) => step.recommended?.id)
             .filter((id): id is number => id !== undefined);
 
-        expect(recommended).toEqual([100, 300, 400]);
+        // Completed paths are score-first; popularity only breaks ties after
+        // the path has been made as complete as possible.
+        expect(recommended).toEqual([200, 100, 400]);
         expect(new Set(recommended).size).toBe(recommended.length);
     });
 });
