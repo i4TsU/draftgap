@@ -7,6 +7,7 @@ export const LOLMIX_DEFAULT_HOST = "127.0.0.1";
 export const LOLMIX_DEFAULT_TIER = "all";
 export const LOLMIX_DEFAULT_PATCH = "30";
 export const LOLMIX_DEFAULT_TOP_N = 8;
+export const LOLMIX_REQUEST_TIMEOUT_MS = 20_000;
 
 export const LOLMIX_RECOMMENDATION_SECTIONS = [
     "summoners",
@@ -490,6 +491,11 @@ export async function fetchLolmixRecommendations(
     fetcher: LolmixFetch = fetch,
 ): Promise<LolmixClientResult> {
     let response: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(
+        () => controller.abort(),
+        LOLMIX_REQUEST_TIMEOUT_MS,
+    );
     try {
         response = await fetcher(endpoint, {
             method: "POST",
@@ -497,8 +503,15 @@ export async function fetchLolmixRecommendations(
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(payload),
+            signal: controller.signal,
         });
     } catch (error) {
+        if (controller.signal.aborted) {
+            return {
+                status: "unavailable",
+                message: `lolmix-server request timed out after ${LOLMIX_REQUEST_TIMEOUT_MS / 1000}s.`,
+            };
+        }
         return {
             status: "unavailable",
             message:
@@ -506,6 +519,8 @@ export async function fetchLolmixRecommendations(
                     ? error.message
                     : "lolmix-server is not reachable.",
         };
+    } finally {
+        clearTimeout(timer);
     }
 
     const body = await readJson(response);

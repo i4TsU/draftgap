@@ -305,11 +305,17 @@ export const createLolClientContext = () => {
     const [integrationTimeout, setIntegrationTimeout] = createSignal<
         NodeJS.Timeout | undefined
     >();
+    let integrationGeneration = 0;
+    let integrationActive = false;
 
     const startLolClientIntegration = () => {
-        if (!isDesktop) return;
+        if (!isDesktop || integrationActive) return;
+        integrationActive = true;
+        const generation = ++integrationGeneration;
 
         const update = async () => {
+            if (!integrationActive || generation !== integrationGeneration)
+                return;
             try {
                 if (!hasCurrentSummoner()) {
                     const summoner = await getCurrentSummoner();
@@ -345,10 +351,15 @@ export const createLolClientContext = () => {
                 }
                 setClientError(undefined);
             } catch (e) {
+                if (!integrationActive || generation !== integrationGeneration)
+                    return;
                 setClientState(ClientState.NotFound);
 
                 setClientError((e as any).toString());
             }
+
+            if (!integrationActive || generation !== integrationGeneration)
+                return;
 
             const timeoutMs = {
                 [ClientState.MainMenu]: 1000,
@@ -362,8 +373,11 @@ export const createLolClientContext = () => {
     };
 
     const stopLolClientIntegration = () => {
+        integrationActive = false;
+        integrationGeneration += 1;
         if (integrationTimeout() != null) {
             clearTimeout(integrationTimeout());
+            setIntegrationTimeout(undefined);
         }
         setClientState(ClientState.Disabled);
     };

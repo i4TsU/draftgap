@@ -21,8 +21,9 @@ export const BuildView: Component = () => {
             <LolmixRecommendationsPanel />
             <Switch>
                 <Match when={query.isLoading}>
-                    <div class="text-neutral-50 text-2xl text-center py-12">
-                        Loading...
+                    <div class="text-neutral-500 text-sm text-center py-6">
+                        Fetching build statistics. This will time out if
+                        Lolalytics does not respond.
                     </div>
                 </Match>
                 <Match when={query.isError}>

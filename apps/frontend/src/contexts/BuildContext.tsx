@@ -109,7 +109,7 @@ export function createBuildContext() {
             championKey(),
             championRole(),
             theirTeamComp() ? Object.fromEntries(theirTeamComp()!) : undefined,
-            dataset(),
+            dataset()?.version,
         ],
         queryFn: async (ctx) => {
             if (championKey() === undefined || !theirTeamComp() || !dataset()) {
