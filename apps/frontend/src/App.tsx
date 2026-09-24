@@ -128,13 +128,17 @@ const App: Component = () => {
                                     ] as const
                                 }
                                 selected={currentDraftView().type}
-                                onChange={(type) =>
+                                onChange={(type) => {
+                                    // A champion analysis dialog is rendered above the main view.
+                                    // Clear it before changing views so it cannot leave Builds covered
+                                    // by an analysis overlay after the tab switch.
+                                    setAnalysisPick(undefined);
                                     setCurrentDraftView({
                                         type,
                                         subType: "draft",
-                                    })
-                                }
-                                class="xl:px-8"
+                                    });
+                                }}
+                                class="relative z-[60] xl:px-8"
                             />
                             <Switch>
                                 <Match

@@ -9,7 +9,10 @@ export type LolmixDecisionPhase = "now" | "core" | "matchup" | "details";
 export type LolmixHeadlineMetric = "score" | "combined_wr";
 export type LolmixRunePageKind = "pick" | "win" | "optimal";
 type LolmixCompletedItemSection =
-    "first_completed_item" | "second_item" | "third_item" | "fourth_item";
+    | "first_completed_item"
+    | "second_item"
+    | "third_item"
+    | "fourth_item";
 type LolmixSectionRenderer =
     | "summoners"
     | "runes"
@@ -132,6 +135,7 @@ const LOLMIX_BACKING_RUNE_SECTIONS = new Set([
 export const LOLMIX_MIN_RECOMMENDED_PICK_RATE = 0.0001;
 export const LOLMIX_VIABLE_PICK_RATE_RATIO = 0.1;
 export const LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES = 4;
+export const LOLMIX_MIN_COLLAPSED_ENTRIES = 4;
 
 export const LOLMIX_COMPLETED_ITEM_SECTIONS = [
     "first_completed_item",
@@ -339,9 +343,7 @@ export function lolmixRunePageDisplayEntries(
     }));
 }
 
-function sortedLolmixRunePageEntries(
-    section: LolmixRecommendationSection,
-) {
+function sortedLolmixRunePageEntries(section: LolmixRecommendationSection) {
     return [...section.entries].sort((left, right) => {
         const leftOptimal = isLolmixOptimalRunePage(left);
         const rightOptimal = isLolmixOptimalRunePage(right);
@@ -447,23 +449,36 @@ export function lolmixCollapsedDisplayEntries(
     const recommended =
         options.recommended ??
         lolmixRecommendedEntry(section, options.headline);
-    const collapsed = lolmixViableEntries(section, {
-        headline: options.headline,
-        excludedIds: options.excludedIds,
-    });
-    const entries = recommended
-        ? [
-              recommended,
-              ...collapsed.filter((entry) => entry.id !== recommended.id),
-          ].slice(0, LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES)
-        : collapsed;
-    const fallbackEntries =
-        entries.length > 0
-            ? entries
-            : sortedLolmixEntries(section, options.headline).slice(
-                  0,
-                  LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES,
-              );
+    const sortedEntries = sortedLolmixEntries(section, options.headline);
+    const recommendedEntries =
+        recommended && !options.excludedIds?.has(recommended.id)
+            ? [recommended]
+            : [];
+    const recommendedIds = new Set(recommendedEntries.map((entry) => entry.id));
+    const eligibleEntries = sortedEntries.filter(
+        (entry) =>
+            isLolmixRecommendationEligible(entry) &&
+            !recommendedIds.has(entry.id) &&
+            !options.excludedIds?.has(entry.id),
+    );
+    const candidates = [...recommendedEntries, ...eligibleEntries];
+    const candidateIds = new Set(candidates.map((entry) => entry.id));
+    const rareEntries = sortedEntries.filter(
+        (entry) =>
+            !candidateIds.has(entry.id) && !options.excludedIds?.has(entry.id),
+    );
+    const maxVisible = Math.min(
+        LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES,
+        sortedEntries.length,
+    );
+    const targetCount = Math.min(
+        maxVisible,
+        Math.max(LOLMIX_MIN_COLLAPSED_ENTRIES, candidates.length),
+    );
+    const fallbackEntries = [...candidates, ...rareEntries].slice(
+        0,
+        targetCount,
+    );
 
     return lolmixDisplayEntries(section, {
         headline: options.headline,

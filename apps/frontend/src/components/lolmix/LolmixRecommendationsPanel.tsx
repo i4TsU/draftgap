@@ -105,6 +105,7 @@ export const LolmixRecommendationsPanel: Component = () => {
 };
 
 export const LolmixRecommendationsContent: Component<Props> = (props) => {
+    const { dataset } = useDataset();
     const validRequest = () =>
         props.state.request.ok ? props.state.request : undefined;
     const invalidRequest = () =>
@@ -119,8 +120,8 @@ export const LolmixRecommendationsContent: Component<Props> = (props) => {
         props.state.status === "success" ? props.state : undefined;
 
     return (
-        <Panel class="flex flex-col gap-3 p-3 lg:p-4">
-            <div class="flex flex-wrap items-start justify-between gap-3">
+        <Panel class="flex flex-col gap-2 p-2.5 lg:p-3">
+            <div class="grid gap-2 xl:grid-cols-[minmax(12rem,0.72fr)_minmax(0,3.28fr)] xl:items-start">
                 <div class="min-w-0">
                     <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                         <h2 class="text-sm font-bold uppercase tracking-wide text-neutral-100">
@@ -144,15 +145,23 @@ export const LolmixRecommendationsContent: Component<Props> = (props) => {
                     </Show>
                 </div>
                 <Show when={props.onRefresh}>
-                    <button
-                        type="button"
-                        class="inline-flex items-center gap-1 rounded-md border border-neutral-800 px-2 py-1 text-xs font-semibold uppercase text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-100 disabled:opacity-50"
-                        disabled={props.state.status === "loading"}
-                        onClick={() => props.onRefresh?.()}
-                    >
-                        <Icon path={arrowPath} class="w-3.5" />
-                        Refresh
-                    </button>
+                    <div class="flex items-start justify-between gap-2 xl:justify-end">
+                        <Show when={success()}>
+                            <QuickDecisions
+                                data={success()!.data}
+                                dataset={dataset()}
+                            />
+                        </Show>
+                        <button
+                            type="button"
+                            class="inline-flex shrink-0 items-center gap-1 rounded-md border border-neutral-800 px-2 py-1 text-xs font-semibold uppercase text-neutral-400 transition hover:border-neutral-600 hover:text-neutral-100 disabled:opacity-50"
+                            disabled={props.state.status === "loading"}
+                            onClick={() => props.onRefresh?.()}
+                        >
+                            <Icon path={arrowPath} class="w-3.5" />
+                            Refresh
+                        </button>
+                    </div>
                 </Show>
             </div>
 
@@ -337,10 +346,9 @@ const Recommendations: Component<{ data: LolmixAnalyzeResponse }> = (props) => {
     const sections = () => grouped()[activePhase()];
 
     return (
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-2">
             <EnemyBar data={props.data} />
             <WarningBand data={props.data} />
-            <QuickDecisions data={props.data} dataset={dataset()} />
             <PhaseTabs
                 grouped={grouped()}
                 activePhase={activePhase()}
@@ -461,27 +469,27 @@ const QuickDecisions: Component<{
 
     return (
         <Show when={tiles().length > 0}>
-            <div class="grid grid-cols-2 gap-2 lg:grid-cols-5">
+            <div class="grid min-w-0 flex-1 grid-cols-2 gap-1.5 lg:grid-cols-5">
                 <For each={tiles()}>
                     {(tile) => (
-                        <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2.5">
+                        <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 px-2 py-1.5">
                             <div class="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
                                 {tile.label}
                             </div>
                             <div
-                                class="mt-1 truncate text-sm font-semibold text-neutral-100"
+                                class="mt-0.5 truncate text-xs font-semibold text-neutral-100"
                                 title={tile.value}
                             >
                                 {tile.value}
                             </div>
-                            <div class="mt-1 flex items-center justify-between gap-2 text-xs">
+                            <div class="mt-0.5 flex items-center justify-between gap-1 text-[10px]">
                                 <span class="truncate text-neutral-500">
                                     {tile.sub}
                                 </span>
                                 <Show when={tile.score !== undefined}>
                                     <span
                                         class={cn(
-                                            "shrink-0 tabular-nums",
+                                            "shrink-0 font-semibold tabular-nums",
                                             lolmixScoreClass(tile.score!),
                                         )}
                                     >
@@ -511,7 +519,7 @@ const PhaseTabs: Component<{
     );
 
     return (
-        <div class="grid grid-cols-1 gap-1 rounded-md bg-neutral-950/40 p-1 sm:grid-cols-3 xl:grid-cols-4">
+        <div class="flex flex-wrap gap-1 rounded-md bg-neutral-950/40 p-1">
             <For each={visiblePhases()}>
                 {(item) => {
                     const count = () => props.grouped[item.id].length;
@@ -522,7 +530,7 @@ const PhaseTabs: Component<{
                             type="button"
                             disabled={disabled()}
                             class={cn(
-                                "rounded px-2 py-1.5 text-center transition",
+                                "min-w-[8rem] flex-1 rounded px-2 py-1.5 text-center transition",
                                 props.activePhase === item.id
                                     ? "bg-neutral-700 text-neutral-100"
                                     : disabled()
@@ -979,9 +987,7 @@ const RunePageDetail: Component<{
                                 )}
                             </span>
                             <Show
-                                when={
-                                    (props.entry.context_coverage ?? 0) > 0
-                                }
+                                when={(props.entry.context_coverage ?? 0) > 0}
                             >
                                 <span
                                     class={lolmixScoreClass(
@@ -1472,15 +1478,20 @@ const BuildOptionRow: Component<{
     >
         <ItemIcon dataset={props.dataset} itemId={props.item.entry.id} small />
         <span
-            class="min-w-0 flex-1 truncate text-neutral-200"
+            class="min-w-0 flex-1 truncate font-medium text-neutral-100"
             title={props.item.entry.name}
         >
             {props.item.entry.name}
         </span>
-        <EntryBadge item={props.item} />
-        <EntryStats entry={props.item.entry} />
-        <ScoreChip value={props.item.entry.score} />
-        <SamplePill value={props.item.entry.total_n_max} />
+        <div class="ml-auto flex shrink-0 items-center gap-2.5 font-body">
+            <EntryBadge item={props.item} />
+            <EntryStats
+                class="hidden text-xs text-neutral-300 sm:flex"
+                entry={props.item.entry}
+            />
+            <ScoreChip class="text-xs" value={props.item.entry.score} />
+            <SamplePill class="text-xs" value={props.item.entry.total_n_max} />
+        </div>
     </div>
 );
 
@@ -2143,12 +2154,13 @@ const EntryStats: Component<{
     </div>
 );
 
-const ScoreChip: Component<{ value: number }> = (props) => (
+const ScoreChip: Component<{ value: number; class?: string }> = (props) => (
     <span
         class={cn(
             "inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-semibold leading-none tabular-nums",
             lolmixScoreClass(props.value),
             lolmixScoreToneClass(props.value),
+            props.class,
         )}
         title={`Score ${formatLolmixSignedPercent(props.value)}`}
     >
@@ -2156,7 +2168,10 @@ const ScoreChip: Component<{ value: number }> = (props) => (
     </span>
 );
 
-const SamplePill: Component<{ value: number | undefined }> = (props) => {
+const SamplePill: Component<{
+    value: number | undefined;
+    class?: string;
+}> = (props) => {
     const confidence = () => lolmixSampleConfidence(props.value);
     const lowSample = () => confidence() === "low" || confidence() === "tiny";
 
@@ -2165,6 +2180,7 @@ const SamplePill: Component<{ value: number | undefined }> = (props) => {
             class={cn(
                 "inline-flex items-center gap-1 text-[10px] uppercase tabular-nums",
                 lowSample() ? "text-amber-300" : "text-neutral-500",
+                props.class,
             )}
             title={`${formatLolmixCount(props.value ?? 0)} games sampled`}
         >

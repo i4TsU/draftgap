@@ -435,6 +435,38 @@ describe("lolmix display helpers", () => {
         expect(lolmixDisplayEntries(section)).toHaveLength(8);
     });
 
+    test("fills the collapsed build path with score-ranked eligible options", () => {
+        const section = {
+            name: "first_completed_item",
+            entries: [
+                entry(1, "first_completed_item", {
+                    score: 0.04,
+                    combined_pr: 0.7,
+                }),
+                entry(2, "first_completed_item", {
+                    score: 0.03,
+                    combined_pr: 0.2,
+                }),
+                entry(3, "first_completed_item", {
+                    score: 0.02,
+                    combined_pr: 0.05,
+                }),
+                entry(4, "first_completed_item", {
+                    score: 0.01,
+                    combined_pr: 0.01,
+                }),
+                entry(5, "first_completed_item", {
+                    score: -0.05,
+                    combined_pr: 0.18,
+                }),
+            ],
+        };
+
+        expect(
+            lolmixCollapsedDisplayEntries(section).map((item) => item.entry.id),
+        ).toEqual([1, 2, 3, 4]);
+    });
+
     test("optimizes completed item paths without duplicate item recommendations", () => {
         const steps = lolmixBuildPathSteps([
             {
