@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
+import { readFileSync } from "node:fs";
 import { createServer, connect } from "node:net";
 import { lolmixRepo } from "../lib/cross-repo";
 import { ownedSpawnOptions, stopOwned, within } from "../lib/owned-process";
@@ -69,9 +70,18 @@ function listening(port: number) {
 function alive(pid: number) {
   try {
     process.kill(pid, 0);
+    if (process.platform === "linux") {
+      // Minimal containers may not reap orphaned grandchildren at PID 1.
+      // kill(pid, 0) also succeeds for zombies, which have already exited.
+      // Keep checking listeners separately so this cannot hide a live service.
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      if (stat.slice(stat.lastIndexOf(")") + 2).startsWith("Z ")) return false;
+    }
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || code === "ENOENT") return false;
+    throw error;
   }
 }
 
