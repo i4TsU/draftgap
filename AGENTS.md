@@ -117,9 +117,9 @@ This guide is for agentic coding assistants working in this repository. DraftGap
 Keep `draftgap/` and `lolmix/` as separate sibling repositories; select both in
 the same cloud environment. If paths differ, set `LOLMIX_REPO` to its checkout.
 Read `docs/cross-repo.md`, including its Install script and Start skill.
-`bun run setup:all` installs locked dependencies; `bun run check:all` runs both
+`bun run --bun setup:all` installs locked dependencies; `bun run --bun check:all` runs both
 test suites, Python lint/format checks, TS typecheck, frontend lint/build, and
-the real HTTP cross-repo contract test. `bun run dev:all` supervises both services
+the real HTTP cross-repo contract test. `bun run --bun dev:all` supervises both services
 on loopback. Commit coordinated changes in each repository independently.
 The deterministic tests need no production secrets or live League client.
 Windows desktop/LCU/cookie behavior still requires local Windows acceptance.

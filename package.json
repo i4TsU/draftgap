@@ -13,7 +13,8 @@
         "setup:all": "bun scripts/cross-repo.ts setup",
         "check:all": "bun scripts/cross-repo.ts check",
         "dev:all": "bun scripts/cross-repo.ts dev",
-        "test:integration": "bun test scripts/integration/lolmix-http.test.ts"
+        "test:integration": "bun test scripts/integration/lolmix-http.test.ts",
+        "test:orchestration": "bun test scripts/integration/owned-process.test.ts"
     },
     "devDependencies": {
         "@types/bun": "latest"

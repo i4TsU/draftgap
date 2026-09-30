@@ -17,6 +17,8 @@ import {
   visibleLolmixSections,
 } from "../../apps/frontend/src/components/lolmix/lolmix-display";
 import { lolmixRepo, requireRepositories } from "../lib/cross-repo";
+import { ownedSpawnOptions, stopOwned } from "../lib/owned-process";
+import { waitReady } from "../lib/wait-ready";
 
 requireRepositories();
 type Server = {
@@ -37,6 +39,7 @@ async function startServer(schema?: number) {
   ];
   if (schema !== undefined) args.push("--schema-version", String(schema));
   const child = Bun.spawn(args, {
+    ...ownedSpawnOptions,
     cwd: lolmixRepo,
     stdin: "pipe",
     stdout: "pipe",
@@ -54,16 +57,12 @@ async function startServer(schema?: number) {
       }
       return JSON.parse(text.split("\n")[0]!);
     };
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    const address = await Promise.race([
+    const address = await waitReady(
       ready(),
-      new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("LoLMix fixture server startup timed out.")),
-          15_000,
-        );
-      }),
-    ]).finally(() => clearTimeout(timeout));
+      new AbortController().signal,
+      15_000,
+      "LoLMix fixture server startup timed out.",
+    );
     const owned = {
       process: child,
       host: address.host as string,
@@ -72,8 +71,7 @@ async function startServer(schema?: number) {
     servers.push(owned);
     return owned;
   } catch (error) {
-    child.stdin.end();
-    await child.exited;
+    await stopOwned(child, () => child.stdin.end());
     throw error;
   } finally {
     reader.releaseLock();
@@ -115,8 +113,11 @@ beforeAll(async () => {
   server = await startServer();
 }, 20_000);
 afterAll(async () => {
-  for (const owned of servers) owned.process.stdin.end();
-  await Promise.all(servers.map((owned) => owned.process.exited));
+  await Promise.all(
+    servers.map(({ process: child }) =>
+      stopOwned(child, () => child.stdin.end()),
+    ),
+  );
 }, 10_000);
 
 describe("DraftGap client against the real LoLMix HTTP and export stack", () => {

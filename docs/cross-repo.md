@@ -24,9 +24,9 @@ Use Bun **1.3.6** (the workspace package-manager version), Python **3.12**
 (LoLMix's `.python-version`) and `uv`. From DraftGap:
 
 ```sh
-bun run setup:all
-bun run check:all
-bun run dev:all
+bun run --bun setup:all
+bun run --bun check:all
+bun run --bun dev:all
 ```
 
 Setup installs all LoLMix extras (including GUI dependencies for its pandas/
@@ -34,13 +34,18 @@ matplotlib test) and DraftGap's frozen Bun
 lockfile. Checks print both source SHAs, run Python tests/lint/format checks,
 workspace TS typechecking, frontend Bun tests/lint/build, and the HTTP contract
 test. The frontend build does not run typechecking itself.
+The `--bun` flag keeps nested package scripts on the selected Bun executable,
+including when a different Bun installation is also on PATH.
 
 `dev:all` starts LoLMix on `127.0.0.1:8765`, checks its health/schema, and starts
 Vite on `127.0.0.1:3000` with a strict port. Stop the supervising command when
 finished with Ctrl+C or by typing `stop` followed by Enter. It stops its own
 child processes, and never kills existing services. The Python service has an
 owned stdin shutdown channel; Vite is launched directly to avoid orphaning a
-package-runner child on Windows. Use a terminal session with stdin kept open
+package-runner child on Windows. Shutdown has a short grace period, followed
+by bounded termination of only the owned Windows process tree or Unix process
+group. Typing `stop`, Ctrl+C, or closing stdin initiates the same cleanup.
+Use a terminal session with stdin kept open
 (for example, `tty=true` in Codex's terminal tool).
 Use a separate worktree per concurrent task; pytest's `.pytest-tmp` is scoped
 to each LoLMix checkout. Avoid concurrent dependency installs in one checkout.
@@ -48,7 +53,7 @@ to each LoLMix checkout. Avoid concurrent dependency installs in one checkout.
 To run the contract check alone:
 
 ```sh
-bun run test:integration
+bun run --bun test:integration
 ```
 
 It launches LoLMix's real HTTP handlers, validation, section filtering and JSON
@@ -58,7 +63,11 @@ analysis inputs are synthetic; no Lolalytics/Riot requests or personal data are
 needed. It checks contextual rates, null matchup entries, warnings, observed
 and optimal rune pages, field validation, schema incompatibility and CORS.
 
-For desktop development, `bun run tauri dev` works from the root. Native builds
+`bun run --bun test:orchestration` additionally checks repeated cleanup,
+startup timeout/interruption, child-process/listener cleanup, existing-service
+ownership and Bun runtime selection. `check:all` runs these regression tests.
+
+For desktop development, `bun run --bun tauri dev` works from the root. Native builds
 also need Rust and platform prerequisites; keep them separate from web checks.
 
 ## Codex Cloud environment
@@ -76,8 +85,8 @@ Install script after substituting the two **observed** checkout paths:
 set -eu
 export LOLMIX_REPO="<absolute-lolmix-checkout>"
 cd "<absolute-draftgap-checkout>"
-bun run setup:all
-bun run check:all
+bun run --bun setup:all
+bun run --bun check:all
 ```
 
 Use this Start skill:
@@ -85,9 +94,9 @@ Use this Start skill:
 > Locate the DraftGap and LoLMix checkouts and set LOLMIX_REPO if they are not
 > siblings. Read both AGENTS.md files and draftgap/docs/cross-repo.md. Check Bun
 > 1.3.6, Python 3.12 and uv are available, and print both Git SHAs/statuses.
-> Run `bun run check:all` from DraftGap after relevant changes; run
-> `bun run setup:all` first if dependencies changed. For interactive web/service
-> development, use `bun run dev:all` in a managed terminal with stdin kept open
+> Run `bun run --bun check:all` from DraftGap after relevant changes; run
+> `bun run --bun setup:all` first if dependencies changed. For interactive web/service
+> development, use `bun run --bun dev:all` in a managed terminal with stdin kept open
 > (tty=true for Codex terminal tools), only when the existing network policy
 > permits DDragon metadata requests. Confirm
 > `/health` reports app=lolmix and schema_version=1, and Vite is ready on
