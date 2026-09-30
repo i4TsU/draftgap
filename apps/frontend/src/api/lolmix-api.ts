@@ -652,7 +652,7 @@ function parseLolmixHealthResponse(
         !record ||
         record.status !== "ok" ||
         record.app !== "lolmix" ||
-        typeof record.schema_version !== "number" ||
+        record.schema_version !== 1 ||
         (record.version !== null && typeof record.version !== "string")
     ) {
         return;

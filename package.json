@@ -9,7 +9,11 @@
         "bump-version": "bun run typecheck && bun scripts/bump-version.ts",
         "typecheck": "turbo typecheck",
         "dev": "bun run --filter @draftgap/frontend dev",
-        "tauri": "bun run --filter @draftgap/frontend tauri"
+        "tauri": "bun run --filter @draftgap/frontend tauri",
+        "setup:all": "bun scripts/cross-repo.ts setup",
+        "check:all": "bun scripts/cross-repo.ts check",
+        "dev:all": "bun scripts/cross-repo.ts dev",
+        "test:integration": "bun test scripts/integration/lolmix-http.test.ts"
     },
     "devDependencies": {
         "@types/bun": "latest"
