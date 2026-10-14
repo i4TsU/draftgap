@@ -67,10 +67,26 @@ export const PathTable: Component<PathTableProps> = (props) => {
         return result;
     });
 
-    const runeAnalysis = (runeId: number) =>
-        buildAnalysisResult()!.runes[props.type][runeId];
-    const runeStats = (runeId: number) =>
-        partialBuildDataset()!.runes[props.type][runeId];
+    const availableRunes = (slot: number) => {
+        const analysis = buildAnalysisResult()?.runes[props.type];
+        const buildData = partialBuildDataset();
+        if (!analysis || !buildData) return [];
+
+        return (runesBySlot().get(slot) ?? []).flatMap((rune) => {
+            const result = analysis[rune.id];
+            const stats = buildData.runes[props.type][rune.id];
+            return result && stats
+                ? [
+                      {
+                          id: rune.id,
+                          rating: result.totalRating,
+                          games: stats.games,
+                          totalGames: buildData.games,
+                      },
+                  ]
+                : [];
+        });
+    };
 
     return (
         <div>
@@ -82,13 +98,13 @@ export const PathTable: Component<PathTableProps> = (props) => {
             <div class="bg-[#141414] p-2 rounded-md flex flex-col gap-2 relative">
                 <Show when={props.type === "primary"}>
                     <div class="flex gap-2 justify-between mb-2 min-w-[184px]">
-                        <For each={runesBySlot().get(0)}>
+                        <For each={availableRunes(0)}>
                             {(rune) => (
                                 <Rune
                                     runeId={rune.id}
-                                    rating={runeAnalysis(rune.id).totalRating}
-                                    games={runeStats(rune.id).games}
-                                    totalGames={partialBuildDataset()!.games}
+                                    rating={rune.rating}
+                                    games={rune.games}
+                                    totalGames={rune.totalGames}
                                     type={props.type}
                                 />
                             )}
@@ -102,17 +118,13 @@ export const PathTable: Component<PathTableProps> = (props) => {
                 >
                     {(slot) => (
                         <div class="flex gap-2 justify-between min-w-[184px]">
-                            <For each={runesBySlot().get(slot)}>
+                            <For each={availableRunes(slot)}>
                                 {(rune) => (
                                     <Rune
                                         runeId={rune.id}
-                                        rating={
-                                            runeAnalysis(rune.id).totalRating
-                                        }
-                                        games={runeStats(rune.id).games}
-                                        totalGames={
-                                            partialBuildDataset()!.games
-                                        }
+                                        rating={rune.rating}
+                                        games={rune.games}
+                                        totalGames={rune.totalGames}
                                         type={props.type}
                                     />
                                 )}
@@ -147,6 +159,33 @@ export const ShardTable: Component = () => {
         return result;
     });
 
+    const availableShards = (
+        slot: number,
+        shardType: "offense" | "flex" | "defense",
+    ) => {
+        const analysis = buildAnalysisResult()?.runes.shards[shardType];
+        const buildData = partialBuildDataset();
+        if (!analysis || !buildData) return [];
+
+        return [...(shardsByPosition().get(slot)?.entries() ?? [])]
+            .sort(([left], [right]) => left - right)
+            .flatMap(([index, shard]) => {
+                const result = analysis[shard.id];
+                const stats = buildData.runes.shards[shardType][shard.id];
+                return result && stats
+                    ? [
+                          {
+                              index,
+                              id: shard.id,
+                              rating: result.totalRating,
+                              games: stats.games,
+                              totalGames: buildData.games,
+                          },
+                      ]
+                    : [];
+            });
+    };
+
     return (
         <div>
             <h3 class="uppercase mb-2 min-w-[184px]">Shards</h3>
@@ -161,32 +200,26 @@ export const ShardTable: Component = () => {
                     }
                 >
                     {([slot, shardType]) => {
-                        const shards = shardsByPosition().get(slot)!;
                         return (
-                            <div class="flex gap-2 justify-between min-w-[184px]">
-                                <For each={[0, 1, 2]}>
-                                    {(index) => {
-                                        const shard = shards.get(index)!;
-                                        const analysis =
-                                            buildAnalysisResult()!.runes.shards[
-                                                shardType
-                                            ][shard.id];
-                                        const stats =
-                                            partialBuildDataset()!.runes.shards[
-                                                shardType
-                                            ][shard.id];
-                                        return (
+                            <div class="grid grid-cols-3 gap-2 min-w-[184px] justify-items-center">
+                                <For each={availableShards(slot, shardType)}>
+                                    {(shard) => (
+                                        <div
+                                            style={{
+                                                "grid-column": String(
+                                                    shard.index + 1,
+                                                ),
+                                            }}
+                                        >
                                             <Rune
                                                 runeId={shard.id}
-                                                rating={analysis.totalRating}
-                                                games={stats.games}
-                                                totalGames={
-                                                    partialBuildDataset()!.games
-                                                }
+                                                rating={shard.rating}
+                                                games={shard.games}
+                                                totalGames={shard.totalGames}
                                                 type={`shard-${shardType}`}
                                             />
-                                        );
-                                    }}
+                                        </div>
+                                    )}
                                 </For>
                             </div>
                         );
@@ -217,6 +250,8 @@ export const Rune: Component<RuneProps> = (props) => {
     const isRune = () => props.type.startsWith("shard-") === false;
     const rune = () => dataset()!.runeData[props.runeId];
     const shard = () => dataset()!.statShardData[props.runeId];
+    const pickRate = () =>
+        props.totalGames > 0 ? props.games / props.totalGames : 0;
 
     const imgUrl = () =>
         isRune()
@@ -227,7 +262,7 @@ export const Rune: Component<RuneProps> = (props) => {
         <button
             class="flex flex-col items-center justify-center gap-1 text-xs"
             classList={{
-                "opacity-20": props.games / props.totalGames < 0.01,
+                "opacity-20": pickRate() < 0.01,
             }}
             onClick={() =>
                 setSelectedEntity({
@@ -248,9 +283,7 @@ export const Rune: Component<RuneProps> = (props) => {
             <span class={getRatingClass(props.rating)}>
                 {formatPercentage(ratingToWinrate(props.rating))}
             </span>
-            <span class="text-neutral-500">
-                {formatPercentage(props.games / props.totalGames)}
-            </span>
+            <span class="text-neutral-500">{formatPercentage(pickRate())}</span>
         </button>
     );
 };
