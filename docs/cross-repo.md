@@ -76,6 +76,53 @@ also need Rust and platform prerequisites; keep them separate from web checks.
 
 ## Codex Cloud environment
 
+### Reproducible bootstrap for the combined saved environment
+
+The two `main` branches do not yet contain coordinated setup. For the reviewed
+3.2.2 integration, select DraftGap branch
+`codex/integrate-draftgap-v3.2.2-20261014` **after it has been pushed**, and LoLMix
+branch `codex/cloud-cross-repo-setup-20260930` at
+`c2b870b0053362e7dc649411b869727f96b96800`. The latter already exists remotely.
+Do not substitute a local-only companion branch in saved selectors.
+
+With mounts `/workspace/draftgap` and `/workspace/lolmix`, set the saved Install
+script to:
+
+```sh
+bash /workspace/draftgap/scripts/cloud-install.sh
+```
+
+This tracked bootstrap requires Git, npm, uv and Python 3.12 availability. It
+installs pinned Bun into the sibling `.cloud-tools` directory, creates writable
+caches and a non-secret `.cloud-setup/env.sh`, installs both locked dependency
+sets, and runs the complete checks under the tracked Linux child subreaper.
+It preserves selected revisions and dirty files; it never fetches, switches
+branches, changes authentication/network policy or publishes. A LoLMix revision
+without locked setup fails explicitly. No old untracked `install.sh` or
+`run-reaped.py` is required.
+
+Replace the saved Start instructions that force September branches with:
+
+> Keep the selected repository revisions. Read both AGENTS.md files and
+> draftgap/docs/cross-repo.md. Source /workspace/.cloud-setup/env.sh in every
+> Bash shell. If it or dependencies are missing, run
+> bash /workspace/draftgap/scripts/cloud-install.sh. Print both source SHAs and
+> statuses. Run bun run --bun setup:all when dependencies change. From DraftGap,
+> run uv run --project "$LOLMIX_REPO" --locked --no-sync python
+> scripts/lib/run-reaped.py bun run --bun check:all after relevant changes.
+> Never automatically switch back to a setup branch. Preserve network/auth
+> settings. Do not run publishing scripts. Windows runtime checks remain separate.
+
+Save/publish these product settings, then launch a fresh task and verify the
+selected source pair and bootstrap exit status. Updating files in one running
+task does not update the saved environment. Until the integration branch is
+delivered and these settings are applied, fresh-launch reproducibility is not
+verified. Selecting `main` would omit the coordinated scripts and Python lockfile;
+the former untracked installer instead forced older setup revisions and would
+omit the latest user/upstream integration.
+
+### General environment guidance
+
 Create a **new combined environment**, preserving the existing migrated
 LoLMix environment. Select **both** `i4TsU/lolmix` and `i4TsU/draftgap` in the
 repository selector. Inspect the resulting mount paths; if they are not siblings,
