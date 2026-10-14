@@ -1,6 +1,6 @@
 {
     "name": "@draftgap/frontend",
-    "version": "3.2.1",
+    "version": "3.2.2",
     "type": "module",
     "scripts": {
         "start": "bunx --bun vite",
@@ -12,6 +12,7 @@
         "typecheck": "tsc --noEmit",
         "update-data": "bun run scripts/update-data.ts",
         "publish-tauri-update": "bun scripts/publish-tauri-update.ts",
+        "tauri": "tauri",
         "tauri-dev": "tauri dev",
         "format": "bunx prettier . --write"
     },

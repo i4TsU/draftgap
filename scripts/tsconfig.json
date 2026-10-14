@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "types": ["bun"],
+    "lib": ["ESNext", "DOM"],
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["cross-repo.ts", "lib/**/*.ts", "integration/**/*.ts"]
+}
