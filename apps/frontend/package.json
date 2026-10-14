@@ -12,6 +12,7 @@
         "typecheck": "tsc --noEmit",
         "update-data": "bun run scripts/update-data.ts",
         "publish-tauri-update": "bun scripts/publish-tauri-update.ts",
+        "tauri": "tauri",
         "tauri-dev": "tauri dev",
         "format": "bunx prettier . --write"
     },

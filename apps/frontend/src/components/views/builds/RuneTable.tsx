@@ -8,6 +8,7 @@ import { formatPercentage, getRatingClass } from "../../../utils/rating";
 import { ratingToWinrate } from "@draftgap/core/src/rating/ratings";
 import { useBuild } from "../../../contexts/BuildContext";
 import { useDataset } from "../../../contexts/DatasetContext";
+import { availableRuneEntries, runePickRate } from "./rune-table-data";
 
 export const RuneTable: Component = () => {
     const { dataset } = useDataset();
@@ -70,22 +71,12 @@ export const PathTable: Component<PathTableProps> = (props) => {
     const availableRunes = (slot: number) => {
         const analysis = buildAnalysisResult()?.runes[props.type];
         const buildData = partialBuildDataset();
-        if (!analysis || !buildData) return [];
-
-        return (runesBySlot().get(slot) ?? []).flatMap((rune) => {
-            const result = analysis[rune.id];
-            const stats = buildData.runes[props.type][rune.id];
-            return result && stats
-                ? [
-                      {
-                          id: rune.id,
-                          rating: result.totalRating,
-                          games: stats.games,
-                          totalGames: buildData.games,
-                      },
-                  ]
-                : [];
-        });
+        return availableRuneEntries(
+            runesBySlot().get(slot),
+            analysis,
+            buildData?.runes[props.type],
+            buildData?.games,
+        );
     };
 
     return (
@@ -165,25 +156,14 @@ export const ShardTable: Component = () => {
     ) => {
         const analysis = buildAnalysisResult()?.runes.shards[shardType];
         const buildData = partialBuildDataset();
-        if (!analysis || !buildData) return [];
-
-        return [...(shardsByPosition().get(slot)?.entries() ?? [])]
-            .sort(([left], [right]) => left - right)
-            .flatMap(([index, shard]) => {
-                const result = analysis[shard.id];
-                const stats = buildData.runes.shards[shardType][shard.id];
-                return result && stats
-                    ? [
-                          {
-                              index,
-                              id: shard.id,
-                              rating: result.totalRating,
-                              games: stats.games,
-                              totalGames: buildData.games,
-                          },
-                      ]
-                    : [];
-            });
+        return availableRuneEntries(
+            [...(shardsByPosition().get(slot)?.entries() ?? [])]
+                .sort(([left], [right]) => left - right)
+                .map(([index, shard]) => ({ index, id: shard.id })),
+            analysis,
+            buildData?.runes.shards[shardType],
+            buildData?.games,
+        );
     };
 
     return (
@@ -250,8 +230,7 @@ export const Rune: Component<RuneProps> = (props) => {
     const isRune = () => props.type.startsWith("shard-") === false;
     const rune = () => dataset()!.runeData[props.runeId];
     const shard = () => dataset()!.statShardData[props.runeId];
-    const pickRate = () =>
-        props.totalGames > 0 ? props.games / props.totalGames : 0;
+    const pickRate = () => runePickRate(props.games, props.totalGames);
 
     const imgUrl = () =>
         isRune()
