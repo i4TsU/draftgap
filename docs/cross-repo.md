@@ -66,6 +66,10 @@ and optimal rune pages, field validation, schema incompatibility and CORS.
 `bun run --bun test:orchestration` additionally checks repeated cleanup,
 startup timeout/interruption, child-process/listener cleanup, existing-service
 ownership and Bun runtime selection. `check:all` runs these regression tests.
+On Linux, the cleanup assertions distinguish exited zombies from running
+processes and still verify that owned listeners close. Minimal containers whose
+PID 1 does not reap orphaned children can retain zombie process-table entries
+after forced shutdown; these are not running services.
 
 For desktop development, `bun run --bun tauri dev` works from the root. Native builds
 also need Rust and platform prerequisites; keep them separate from web checks.
