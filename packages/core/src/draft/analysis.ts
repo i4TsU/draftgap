@@ -270,6 +270,8 @@ export type AnalyzeMatchupResult = {
     roleB: Role;
     championKeyB: string;
     rating: number;
+    // Contribution to the draft total after lane weighting and normalization.
+    weightedRating: number;
     wins: number;
     games: number;
     weight: number;
@@ -287,8 +289,6 @@ export function analyzeMatchups(
     priorGames: number,
 ): AnalyzeMatchupsResult {
     const matchupResults: AnalyzeMatchupResult[] = [];
-    const directRatings: number[] = [];
-    const crossRatings: number[] = [];
 
     for (const [allyRole, allyChampionKey] of team) {
         for (const [enemyRole, enemyChampionKey] of enemy) {
@@ -362,6 +362,7 @@ export function analyzeMatchups(
                 roleB: enemyRole,
                 championKeyB: enemyChampionKey,
                 rating,
+                weightedRating: 0,
                 wins:
                     ratingToWinrate(
                         winrateToRating(safeWinrate(wins, games)) -
@@ -370,27 +371,19 @@ export function analyzeMatchups(
                 games,
                 weight,
             });
-            if (allyRole === enemyRole) {
-                directRatings.push(rating);
-            } else {
-                crossRatings.push(rating);
-            }
         }
     }
 
-    // The 5x5 matrix contains one direct lane pair and up to 24 contextual
-    // pairs. Average each group before applying its group weight so the
-    // contextual rows cannot drown out the direct lane signal simply because
-    // there are more of them.
-    const rowCount = directRatings.length + crossRatings.length;
-    const weightedRowCount =
-        directRatings.length * DIRECT_LANE_MATCHUP_WEIGHT +
-        crossRatings.length * CROSS_ROLE_MATCHUP_WEIGHT;
-    const weightedTotal =
-        DIRECT_LANE_MATCHUP_WEIGHT * sum(directRatings) +
-        CROSS_ROLE_MATCHUP_WEIGHT * sum(crossRatings);
-    const totalRating =
-        weightedRowCount > 0 ? (weightedTotal / weightedRowCount) * rowCount : 0;
+    // Preserve the existing weighted-mean-times-row-count scale. Normalize
+    // once across the whole draft so champion and filtered table contributions
+    // remain additive without changing their weight when a view filters rows.
+    const totalWeight = matchupResults.reduce((acc, r) => acc + r.weight, 0);
+    const normalization =
+        totalWeight > 0 ? matchupResults.length / totalWeight : 0;
+    for (const result of matchupResults) {
+        result.weightedRating = result.rating * result.weight * normalization;
+    }
+    const totalRating = sumMatchupRatings(matchupResults);
 
     return {
         matchupResults,
@@ -398,6 +391,6 @@ export function analyzeMatchups(
     };
 }
 
-function sum(values: number[]) {
-    return values.reduce((total, value) => total + value, 0);
+export function sumMatchupRatings(results: readonly AnalyzeMatchupResult[]) {
+    return results.reduce((total, result) => total + result.weightedRating, 0);
 }

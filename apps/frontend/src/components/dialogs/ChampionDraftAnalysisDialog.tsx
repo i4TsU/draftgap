@@ -108,7 +108,7 @@ export function ChampionDraftAnalysisDialog(props: Props) {
                         ),
                     }}
                 >
-                    Champion winrates normalized
+                    Champion winrates normalized · Lane-weighted contributions
                 </p>
                 <MatchupResultTable
                     showAll={true}

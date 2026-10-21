@@ -189,7 +189,8 @@ export default function AnalysisView() {
                             ),
                         }}
                     >
-                        Champion winrates normalized
+                        Champion winrates normalized · Lane-weighted
+                        contributions
                     </p>
                 </div>
                 <ButtonGroup

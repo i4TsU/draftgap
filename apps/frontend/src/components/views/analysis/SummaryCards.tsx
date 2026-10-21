@@ -7,6 +7,7 @@ import {
 } from "solid-heroicons/solid";
 import { JSX } from "solid-js/jsx-runtime";
 import { Team } from "@draftgap/core/src/models/Team";
+import { sumMatchupRatings } from "@draftgap/core/src/draft/analysis";
 import { tooltip } from "../../../directives/tooltip";
 import { RatingText } from "../../common/RatingText";
 import { Component, Show } from "solid-js";
@@ -114,7 +115,8 @@ export const DraftSummaryCards = (
                 tooltip={
                     <>
                         {capitalize(props.team)} estimated winrate when only
-                        taking into account matchups between the two teams
+                        taking into account lane-weighted matchups between the
+                        two teams
                     </>
                 }
             />
@@ -181,13 +183,11 @@ export const ChampionSummaryCards: Component<ChampionSummaryCardProps> = (
             .reduce((acc, r) => acc + r.rating / 2, 0);
 
     const matchupRating = () =>
-        (draftResult()?.matchupRating.matchupResults ?? [])
-            .filter(
-                (r) =>
-                    r.championKeyA === props.championKey ||
-                    r.championKeyB === props.championKey,
-            )
-            .reduce((acc, r) => acc + r.rating, 0);
+        sumMatchupRatings(
+            (draftResult()?.matchupRating.matchupResults ?? []).filter(
+                (r) => r.championKeyA === props.championKey,
+            ),
+        );
 
     const totalRating = () =>
         baseChampionRating() + duoRating() + matchupRating();
@@ -216,7 +216,8 @@ export const ChampionSummaryCards: Component<ChampionSummaryCardProps> = (
                 tooltip={
                     <>
                         {capitalize(name())} estimated winrate when taking into
-                        account all {name()} matchups with opponent champions
+                        account all lane-weighted {name()} matchups with
+                        opponent champions
                     </>
                 }
             />
