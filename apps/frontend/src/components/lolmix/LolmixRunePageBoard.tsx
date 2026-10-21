@@ -8,6 +8,8 @@ import { cn } from "../../utils/style";
 import {
     formatLolmixCompactCount,
     formatLolmixPercent,
+    formatLolmixSignedPercent,
+    lolmixScoreClass,
 } from "./lolmix-display";
 import { lolmixRuneVisuals, type RuneVisual } from "./lolmix-runes";
 
@@ -171,6 +173,10 @@ export const LolmixRunePageBoard: Component<{
                                         <span class="text-[11px] leading-tight text-neutral-200">
                                             {shard.name}
                                         </span>
+                                        <RuneMetrics
+                                            entry={shardMetric(shard, index())}
+                                            class="justify-center"
+                                        />
                                     </div>
                                 )}
                             </For>
@@ -217,21 +223,49 @@ const RuneRow: Component<{
             >
                 {props.rune.name}
             </div>
-            <Show when={props.entry}>
-                {(entry) => (
-                    <div class="mt-0.5 text-[10px] tabular-nums text-neutral-500">
-                        {formatLolmixPercent(
-                            entry().context_wr ?? entry().combined_wr,
-                        )} WR{" "}
-                        <span class="mx-0.5 text-neutral-700">·</span>{" "}
-                        {formatLolmixPercent(
-                            entry().context_pr ?? entry().combined_pr,
-                        )} pick
-                    </div>
-                )}
-            </Show>
+            <RuneMetrics entry={props.entry} />
         </div>
     </div>
+);
+
+const RuneMetrics: Component<{
+    entry: LolmixRecommendationEntry | undefined;
+    class?: string;
+}> = (props) => (
+    <Show when={props.entry}>
+        {(entry) => (
+            <div
+                class={cn(
+                    "mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] tabular-nums text-neutral-500",
+                    props.class,
+                )}
+            >
+                <span class="whitespace-nowrap">
+                    {formatLolmixPercent(
+                        entry().context_wr ?? entry().combined_wr,
+                    )} WR
+                </span>
+                <span class="whitespace-nowrap">
+                    {formatLolmixPercent(
+                        entry().context_pr ?? entry().combined_pr,
+                    )} pick
+                </span>
+                <span class="whitespace-nowrap">
+                    N {formatLolmixCompactCount(entry().total_n_max)}
+                </span>
+                <Show when={entry().context_delta !== undefined}>
+                    <span
+                        class={cn(
+                            "whitespace-nowrap",
+                            lolmixScoreClass(entry().context_delta ?? 0),
+                        )}
+                    >
+                        Δ {formatLolmixSignedPercent(entry().context_delta ?? 0)}
+                    </span>
+                </Show>
+            </div>
+        )}
+    </Show>
 );
 
 function metricTitle(entry: LolmixRecommendationEntry | undefined) {
