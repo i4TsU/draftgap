@@ -59,9 +59,9 @@ const STAT_SHARD_DATA = {
         ],
     },
     5010: {
-        id: 5011,
-        key: "Flex",
-        name: "Flex",
+        id: 5010,
+        key: "MovementSpeed",
+        name: "Move Speed",
         positions: [{ slot: 1, index: 1 }],
     },
     5011: {
@@ -73,7 +73,7 @@ const STAT_SHARD_DATA = {
     5013: {
         id: 5013,
         key: "TenacityAndSlowResist",
-        name: "Tenactiy and Slow Resist",
+        name: "Tenacity and Slow Resist",
         positions: [{ slot: 2, index: 1 }],
     },
 };

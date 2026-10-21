@@ -133,6 +133,10 @@ const LOLMIX_BACKING_RUNE_SECTIONS = new Set([
 ]);
 
 export const LOLMIX_MIN_RECOMMENDED_PICK_RATE = 0.0001;
+// Rune pages must meet the optimizer's component evidence floor. Item pick
+// rates use a different population and retain their existing threshold.
+const LOLMIX_MIN_RUNE_PICK_RATE = 0.01;
+const LOLMIX_MIN_RUNE_GAMES = 100;
 export const LOLMIX_VIABLE_PICK_RATE_RATIO = 0.1;
 export const LOLMIX_MAX_COLLAPSED_VIABLE_ENTRIES = 4;
 export const LOLMIX_MIN_COLLAPSED_ENTRIES = 4;
@@ -309,7 +313,10 @@ export function lolmixTopEntry(
 export function lolmixRunePageHeadline(
     section: LolmixRecommendationSection | undefined,
 ): LolmixHeadlineMetric {
-    return section?.entries.some(isLolmixOptimalRunePage)
+    return section?.entries.some(
+        (entry) =>
+            isLolmixOptimalRunePage(entry) && isLolmixRunePageEligible(entry),
+    )
         ? "score"
         : "combined_wr";
 }
@@ -319,15 +326,15 @@ export function lolmixRunePageRecommendedEntry(
 ) {
     if (!section || section.entries.length === 0) return;
 
-    const optimal = sortedLolmixRunePageEntries(section).filter(
-        isLolmixOptimalRunePage,
-    );
-    if (optimal.length > 0) {
-        return optimal.find(isLolmixRecommendationEligible) ?? optimal[0];
-    }
+    return sortedLolmixRunePageEntries(section).find(isLolmixRunePageEligible);
+}
 
-    return sortedLolmixRunePageEntries(section).find(
-        isLolmixRecommendationEligible,
+function isLolmixRunePageEligible(entry: LolmixRecommendationEntry) {
+    return (
+        entry.overall_n >= LOLMIX_MIN_RUNE_GAMES &&
+        entry.total_n_max >= LOLMIX_MIN_RUNE_GAMES &&
+        entry.overall_pr >= LOLMIX_MIN_RUNE_PICK_RATE &&
+        entry.combined_pr >= LOLMIX_MIN_RUNE_PICK_RATE
     );
 }
 
@@ -337,14 +344,18 @@ export function lolmixRunePageDisplayEntries(
     const recommended = lolmixRunePageRecommendedEntry(section);
     return sortedLolmixRunePageEntries(section).map((entry) => ({
         entry,
-        recommended: recommended?.id === entry.id,
-        viable: isLolmixRecommendationEligible(entry),
-        rare: !isLolmixRecommendationEligible(entry),
+        recommended: recommended === entry,
+        viable: isLolmixRunePageEligible(entry),
+        rare: !isLolmixRunePageEligible(entry),
     }));
 }
 
 function sortedLolmixRunePageEntries(section: LolmixRecommendationSection) {
     return [...section.entries].sort((left, right) => {
+        const eligibility =
+            Number(isLolmixRunePageEligible(right)) -
+            Number(isLolmixRunePageEligible(left));
+        if (eligibility) return eligibility;
         const leftOptimal = isLolmixOptimalRunePage(left);
         const rightOptimal = isLolmixOptimalRunePage(right);
         if (leftOptimal !== rightOptimal) return leftOptimal ? -1 : 1;
@@ -692,7 +703,10 @@ export function parseLolmixRunePageKey(raw: string) {
 }
 
 export function isLolmixOptimalRunePage(entry: LolmixRecommendationEntry) {
-    return parseLolmixDisplayRunePageKey(entry.name)?.kind === "optimal";
+    return (
+        parseLolmixDisplayRunePageKey(entry.name)?.kind === "optimal" ||
+        /^Optimal Rune Page:/i.test(entry.name.trim())
+    );
 }
 
 export function parseLolmixDisplayRunePageKey(raw: string) {
