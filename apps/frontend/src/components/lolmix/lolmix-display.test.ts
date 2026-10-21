@@ -15,6 +15,7 @@ import {
     lolmixHeadlineMetric,
     lolmixRecommendedEntry,
     lolmixRunePageMetrics,
+    lolmixRunePageDisplayEntries,
     lolmixRunePageRecommendedEntry,
     lolmixSectionTitle,
     lolmixSkillEarlyKey,
@@ -318,6 +319,49 @@ describe("lolmix display helpers", () => {
                 entries: [fallbackLowWr, fallbackHighWr],
             })?.id,
         ).toBe(4);
+    });
+
+    test("unsupported generated pages cannot override an observed recommendation", () => {
+        const observed = entry(1, "rune_page", {
+            name: "Most Picked Rune Page: Precision — Press the Attack",
+        });
+        for (const evidence of [
+            { combined_pr: 0 },
+            { combined_pr: 0.001 },
+            { overall_n: 17, total_n_max: 17 },
+            { overall_n: 0, total_n_max: 10_000 },
+        ]) {
+            const rare = entry(2, "rune_page", {
+                name: "Optimal Rune Page: Resolve — Guardian",
+                score: 0.5,
+                ...evidence,
+            });
+            const section = { name: "rune_page", entries: [rare, observed] };
+            expect(lolmixRunePageRecommendedEntry(section)).toBe(observed);
+            expect(lolmixRunePageDisplayEntries(section)[0].entry).toBe(
+                observed,
+            );
+            expect(
+                lolmixRunePageRecommendedEntry({ ...section, entries: [rare] }),
+            ).toBeUndefined();
+        }
+    });
+
+    test("matching observed and generated configurations mark only one recommendation", () => {
+        const observed = entry(1, "rune_page", {
+            name: "Most Picked Rune Page: Precision — Press the Attack",
+        });
+        const optimal = entry(1, "rune_page", {
+            name: "Optimal Rune Page: Precision — Press the Attack",
+        });
+        const section = { name: "rune_page", entries: [observed, optimal] };
+        expect(lolmixRunePageRecommendedEntry(section)).toBe(optimal);
+        expect(
+            lolmixRunePageDisplayEntries(section)
+                .filter((row) => row.recommended)
+                .map((row) => row.entry),
+        ).toEqual([optimal]);
+        expect(lolmixRunePageMetrics(optimal).mode).toBe("optimal");
     });
 
     test("parses prose rune pages without exposing the raw key", () => {
