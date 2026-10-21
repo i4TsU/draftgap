@@ -66,7 +66,9 @@ export const LolmixRunePageBoard: Component<{
             ?.find(
                 (entry) =>
                     entry.name === `shard:${key}:${shard.id}` ||
-                    entry.name.toLowerCase() ===
+                    entry.name
+                        .toLowerCase()
+                        .replace("movement speed", "move speed") ===
                         `${key}: ${shard.name}`.toLowerCase(),
             );
     };
@@ -218,9 +220,13 @@ const RuneRow: Component<{
             <Show when={props.entry}>
                 {(entry) => (
                     <div class="mt-0.5 text-[10px] tabular-nums text-neutral-500">
-                        {formatLolmixPercent(entry().combined_wr)} WR{" "}
+                        {formatLolmixPercent(
+                            entry().context_wr ?? entry().combined_wr,
+                        )} WR{" "}
                         <span class="mx-0.5 text-neutral-700">·</span>{" "}
-                        {formatLolmixPercent(entry().combined_pr)} pick
+                        {formatLolmixPercent(
+                            entry().context_pr ?? entry().combined_pr,
+                        )} pick
                     </div>
                 )}
             </Show>
@@ -230,6 +236,6 @@ const RuneRow: Component<{
 
 function metricTitle(entry: LolmixRecommendationEntry | undefined) {
     return entry
-        ? `${formatLolmixPercent(entry.combined_wr)} win rate · ${formatLolmixPercent(entry.combined_pr)} pick rate · ${formatLolmixCompactCount(entry.total_n_max)} games (individual rune)`
+        ? `${formatLolmixPercent(entry.context_wr ?? entry.combined_wr)} win rate · ${formatLolmixPercent(entry.context_pr ?? entry.combined_pr)} pick rate · ${formatLolmixCompactCount(entry.total_n_max)} games (individual rune)`
         : undefined;
 }
