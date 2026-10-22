@@ -9,6 +9,11 @@ import { ratingToWinrate } from "@draftgap/core/src/rating/ratings";
 import { useBuild } from "../../../contexts/BuildContext";
 import { useDataset } from "../../../contexts/DatasetContext";
 import { availableRuneEntries, runePickRate } from "./rune-table-data";
+import {
+    runeIconUrl,
+    shardIconUrl,
+    STAT_SHARD_VISUALS,
+} from "../../../utils/rune-icons";
 
 export const RuneTable: Component = () => {
     const { dataset } = useDataset();
@@ -132,7 +137,13 @@ export const ShardTable: Component = () => {
     const { dataset } = useDataset();
     const { buildAnalysisResult, partialBuildDataset } = useBuild();
 
-    const shards = () => Object.values(dataset()!.statShardData);
+    // Older published metadata has the health ID on the movement-speed row.
+    // The record key is the canonical ID used by the statistics payload.
+    const shards = () =>
+        Object.entries(dataset()!.statShardData).map(([id, shard]) => ({
+            ...shard,
+            id: Number(id),
+        }));
 
     const shardsByPosition = createMemo(() => {
         const result = new Map<number, Map<number, StatShardData>>();
@@ -229,13 +240,10 @@ export const Rune: Component<RuneProps> = (props) => {
 
     const isRune = () => props.type.startsWith("shard-") === false;
     const rune = () => dataset()!.runeData[props.runeId];
-    const shard = () => dataset()!.statShardData[props.runeId];
     const pickRate = () => runePickRate(props.games, props.totalGames);
 
     const imgUrl = () =>
-        isRune()
-            ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/${rune().icon.toLowerCase()}`
-            : `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/statmods/statmods${shard().key.toLocaleLowerCase()}icon.png`;
+        isRune() ? runeIconUrl(rune().icon) : shardIconUrl(props.runeId);
 
     return (
         <button
@@ -253,7 +261,12 @@ export const Rune: Component<RuneProps> = (props) => {
         >
             <img
                 src={imgUrl()}
-                alt={isRune() ? rune().name : shard().name}
+                alt={
+                    isRune()
+                        ? rune().name
+                        : (STAT_SHARD_VISUALS[props.runeId]?.name ??
+                          "Stat shard")
+                }
                 classList={{
                     "w-7 h-7": !isRune() || rune().slot !== 0,
                     "w-10 h-10 -mb-1": isRune() && rune().slot === 0,
