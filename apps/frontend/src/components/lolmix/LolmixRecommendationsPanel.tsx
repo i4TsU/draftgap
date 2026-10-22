@@ -57,12 +57,12 @@ import {
     lolmixWinrateTextClass,
     parseLolmixDisplayRunePageKey,
     parseLolmixReadableRunePage,
-    parseLolmixRunePageKey,
     type LolmixBuildPathStep,
     type LolmixDecisionPhase,
     type LolmixDisplayEntry,
-    type LolmixRunePage,
 } from "./lolmix-display";
+import { LolmixRunePageBoard, RuneImage } from "./LolmixRunePageBoard";
+import { lolmixRuneVisuals } from "./lolmix-runes";
 
 type Props = {
     state: LolmixRecommendationsState;
@@ -71,24 +71,6 @@ type Props = {
     port: number;
     onRefresh?: () => void;
 };
-
-type RunePathRecord = Dataset["runePathData"][number];
-type StatShardRecord = Dataset["statShardData"][number];
-
-type SelectedRuneMetric = {
-    id: number;
-    name: string;
-    entry: LolmixRecommendationEntry | undefined;
-};
-
-type SelectedShardMetric = {
-    slot: number;
-    shard: StatShardRecord;
-    entry: LolmixRecommendationEntry | undefined;
-};
-
-const RUNE_PATH_ORDER = [8000, 8100, 8200, 8400, 8300] as const;
-const SHARD_SLOT_LABELS = ["Offense", "Flex", "Defense"] as const;
 
 export const LolmixRecommendationsPanel: Component = () => {
     const { connectionState, host, port, query, state } = useLolmix();
@@ -870,10 +852,18 @@ const RunePageSection: Component<{
     const entries = createMemo(() =>
         lolmixRunePageDisplayEntries(props.section),
     );
-    const [selectedIndex, setSelectedIndex] = createSignal<number>();
+    const [selection, setSelection] = createSignal<{
+        section: LolmixRecommendationSection;
+        name: string;
+    }>();
     const activeIndex = () => {
-        const selected = selectedIndex();
-        if (selected !== undefined && entries()[selected]) return selected;
+        const selected = selection();
+        if (selected?.section === props.section) {
+            const index = entries().findIndex(
+                (item) => item.entry.name === selected.name,
+            );
+            if (index >= 0) return index;
+        }
 
         const recommended = entries().findIndex((entry) => entry.recommended);
         return recommended >= 0 ? recommended : 0;
@@ -887,33 +877,71 @@ const RunePageSection: Component<{
         >
             <div class="flex flex-col gap-2.5">
                 <Show when={entries().length > 1}>
-                    <div class="flex flex-wrap gap-1">
+                    <div
+                        class="flex flex-wrap gap-1.5"
+                        aria-label="Rune page choices"
+                    >
                         <For each={entries()}>
                             {(item, index) => {
                                 const page = () =>
                                     parseLolmixReadableRunePage(
                                         item.entry.name,
                                     );
+                                const keystone = () =>
+                                    lolmixRuneVisuals(
+                                        item.entry.name,
+                                        props.dataset,
+                                    ).primary.runes[0];
                                 return (
                                     <button
                                         type="button"
+                                        aria-pressed={index() === activeIndex()}
                                         class={cn(
-                                            "rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition",
+                                            "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[10px] font-semibold transition focus-visible:outline-2 focus-visible:outline-blue-400",
                                             index() === activeIndex()
-                                                ? "bg-neutral-700 text-neutral-100"
-                                                : "bg-neutral-950/40 text-neutral-500 hover:text-neutral-300",
+                                                ? "border-neutral-600 bg-neutral-800 text-neutral-100"
+                                                : "border-transparent bg-neutral-950/40 text-neutral-400 hover:bg-neutral-800/60 hover:text-neutral-200",
                                             item.rare && "text-amber-300/80",
                                         )}
                                         onClick={() =>
-                                            setSelectedIndex(index())
+                                            setSelection({
+                                                section: props.section,
+                                                name: item.entry.name,
+                                            })
                                         }
                                     >
+                                        <Show when={keystone()?.icon}>
+                                            <RuneImage
+                                                src={keystone()?.icon}
+                                                name={
+                                                    keystone()?.name ??
+                                                    "Keystone"
+                                                }
+                                                class="h-6 w-6"
+                                            />
+                                        </Show>
                                         {page()?.kind ?? `Page ${index() + 1}`}
+                                        <Show when={item.recommended}>
+                                            <span class="text-[9px] text-blue-300">
+                                                Suggested
+                                            </span>
+                                        </Show>
+                                        <Show when={item.rare}>
+                                            <span class="text-[9px] text-amber-300">
+                                                Low evidence
+                                            </span>
+                                        </Show>
                                     </button>
                                 );
                             }}
                         </For>
                     </div>
+                </Show>
+                <Show when={!entries().some((item) => item.recommended)}>
+                    <p class="text-xs text-neutral-400">
+                        There isn’t enough evidence to recommend a page yet.
+                        Available pages are shown for reference.
+                    </p>
                 </Show>
                 <Show when={selectedEntry()}>
                     {(entry) => (
@@ -934,22 +962,10 @@ const RunePageDetail: Component<{
     dataset: Dataset | undefined;
     entry: LolmixRecommendationEntry;
 }> = (props) => {
-    const readable = () => parseLolmixReadableRunePage(props.entry.name);
-    const encoded = () => parseLolmixRunePageKey(props.entry.name);
     const metrics = () => lolmixRunePageMetrics(props.entry);
-    const hasReadableRunes = () => {
-        const page = readable();
-        return !!(
-            page?.primaryPathName ||
-            page?.secondaryPathName ||
-            page?.primaryRunes.length ||
-            page?.secondaryRunes.length ||
-            page?.shards.length
-        );
-    };
 
     return (
-        <div class="rounded-md bg-neutral-950/25 p-3">
+        <div class="rounded-lg border border-neutral-800/70 bg-neutral-950/25 p-3">
             <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div class="flex items-baseline gap-2">
                     <span class="text-[10px] uppercase tracking-wide text-neutral-500">
@@ -968,7 +984,7 @@ const RunePageDetail: Component<{
                     <Switch>
                         <Match when={metrics().mode === "optimal"}>
                             <span class="text-xs uppercase text-neutral-500">
-                                Coverage{" "}
+                                Min. rune pick{" "}
                                 {formatLolmixPercent(props.entry.combined_pr)}
                             </span>
                             <span class="text-xs uppercase text-neutral-500">
@@ -1007,23 +1023,11 @@ const RunePageDetail: Component<{
                 </div>
             </div>
 
-            <Switch>
-                <Match when={hasReadableRunes()}>
-                    <ReadableRunePage page={readable()!} />
-                </Match>
-                <Match when={props.dataset && encoded()}>
-                    <RuneMetricsBoard
-                        data={props.data}
-                        dataset={props.dataset!}
-                        selectedPage={encoded()}
-                    />
-                </Match>
-                <Match when={true}>
-                    <div class="rounded-md border border-dashed border-neutral-800 px-3 py-4 text-center text-xs uppercase text-neutral-600">
-                        Rune details are unavailable for this response format.
-                    </div>
-                </Match>
-            </Switch>
+            <LolmixRunePageBoard
+                name={props.entry.name}
+                dataset={props.dataset}
+                data={props.data}
+            />
 
             <Show when={lolmixLaneMatchup(props.entry)}>
                 {(lane) => (
@@ -1039,86 +1043,6 @@ const RunePageDetail: Component<{
         </div>
     );
 };
-
-const ReadableRunePage: Component<{
-    page: NonNullable<ReturnType<typeof parseLolmixReadableRunePage>>;
-}> = (props) => (
-    <div class="grid grid-cols-1 gap-2 lg:grid-cols-2">
-        <RunePathColumn
-            label="Primary"
-            path={props.page.primaryPathName}
-            runes={props.page.primaryRunes}
-            keystone
-        />
-        <RunePathColumn
-            label="Secondary"
-            path={props.page.secondaryPathName}
-            runes={props.page.secondaryRunes}
-        />
-        <Show when={props.page.shards.length > 0}>
-            <div class="lg:col-span-2">
-                <div class="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                    Shards
-                </div>
-                <div class="flex flex-wrap gap-1">
-                    <For each={props.page.shards}>
-                        {(shard) => (
-                            <span class="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">
-                                {shard}
-                            </span>
-                        )}
-                    </For>
-                </div>
-            </div>
-        </Show>
-    </div>
-);
-
-const RunePathColumn: Component<{
-    label: string;
-    path: string | undefined;
-    runes: string[];
-    keystone?: boolean;
-}> = (props) => (
-    <div class="rounded bg-neutral-900/60 p-2">
-        <div class="mb-1.5 flex flex-wrap items-baseline gap-1.5">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                {props.label}
-            </span>
-            <span class="text-xs font-medium text-neutral-200">
-                {props.path ?? "Unknown"}
-            </span>
-        </div>
-        <Show
-            when={props.runes.length > 0}
-            fallback={
-                <span class="text-xs text-neutral-600">No rune data</span>
-            }
-        >
-            <div class="flex flex-col gap-1">
-                <For each={props.runes}>
-                    {(rune, index) => (
-                        <div
-                            class={cn(
-                                "flex min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-xs",
-                                props.keystone && index() === 0
-                                    ? "bg-neutral-800 font-semibold text-neutral-100"
-                                    : "text-neutral-300",
-                            )}
-                        >
-                            <Show when={props.keystone && index() === 0}>
-                                <span class="rounded-sm bg-amber-500/20 px-1 text-[9px] font-bold uppercase text-amber-300">
-                                    Key
-                                </span>
-                            </Show>
-                            <span class="truncate">{rune}</span>
-                        </div>
-                    )}
-                </For>
-            </div>
-        </Show>
-    </div>
-);
 
 const SkillEarlySection: Component<{
     section: LolmixRecommendationSection;
@@ -1881,247 +1805,6 @@ const GenericSection: Component<{
     );
 };
 
-const RuneMetricsBoard: Component<{
-    data: LolmixAnalyzeResponse;
-    dataset: Dataset;
-    selectedPage: LolmixRunePage | undefined;
-}> = (props) => {
-    const sections = createMemo(
-        () =>
-            new Map(
-                props.data.sections.map((section) => [section.name, section]),
-            ),
-    );
-    const entriesFor = (name: string) => sections().get(name)?.entries ?? [];
-    const keystones = createMemo(() => entryMap(entriesFor("keystones")));
-    const primary = createMemo(() => entryMap(entriesFor("runes_primary")));
-    const secondary = createMemo(() => entryMap(entriesFor("runes_secondary")));
-    const shards = () => entriesFor("stat_shards");
-    const selectedPrimaryPath = createMemo(() =>
-        runePathByIndex(props.dataset, props.selectedPage?.primaryPath),
-    );
-    const selectedSecondaryPath = createMemo(() =>
-        runePathByIndex(props.dataset, props.selectedPage?.secondaryPath),
-    );
-    const selectedPrimaryRunes = createMemo(() => {
-        const keystoneEntries = keystones();
-        const primaryEntries = primary();
-        return selectedRuneMetrics(
-            props.dataset,
-            props.selectedPage?.primary ?? [],
-            (id) => keystoneEntries.get(id) ?? primaryEntries.get(id),
-        );
-    });
-    const selectedSecondaryRunes = createMemo(() => {
-        const secondaryEntries = secondary();
-        return selectedRuneMetrics(
-            props.dataset,
-            props.selectedPage?.secondary ?? [],
-            (id) => secondaryEntries.get(id),
-        );
-    });
-    const selectedShardRows = createMemo<SelectedShardMetric[]>(() => {
-        const selected = props.selectedPage?.shards ?? [];
-        const rows: SelectedShardMetric[] = [];
-
-        for (let slot = 0; slot < 3; slot += 1) {
-            const shardId = selected[slot];
-            if (shardId === undefined) continue;
-
-            const shard =
-                statShardOptions(props.dataset, slot).find(
-                    (candidate) => candidate.id === shardId,
-                ) ?? props.dataset.statShardData[shardId];
-            if (!shard) continue;
-
-            rows.push({
-                slot,
-                shard,
-                entry: statShardEntry(shards(), slot, shard.name),
-            });
-        }
-
-        return rows;
-    });
-    const hasSelectedPage = () =>
-        selectedPrimaryRunes().length > 0 ||
-        selectedSecondaryRunes().length > 0 ||
-        selectedShardRows().length > 0;
-
-    return (
-        <Show
-            when={hasSelectedPage()}
-            fallback={
-                <div class="rounded-md border border-dashed border-neutral-800 px-3 py-4 text-center text-xs uppercase text-neutral-600">
-                    Selected rune details were not returned.
-                </div>
-            }
-        >
-            <div class="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
-                <SelectedRunePathSummary
-                    label="Primary"
-                    path={selectedPrimaryPath()}
-                    runes={selectedPrimaryRunes()}
-                />
-                <div class="grid grid-cols-1 gap-3">
-                    <SelectedRunePathSummary
-                        label="Secondary"
-                        path={selectedSecondaryPath()}
-                        runes={selectedSecondaryRunes()}
-                    />
-                    <SelectedStatShardSummary rows={selectedShardRows()} />
-                </div>
-            </div>
-        </Show>
-    );
-};
-
-const SelectedRunePathSummary: Component<{
-    label: string;
-    path: RunePathRecord | undefined;
-    runes: SelectedRuneMetric[];
-}> = (props) => (
-    <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2">
-        <div class="mb-2 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span class="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                {props.label}
-            </span>
-            <span class="min-w-0 truncate text-xs font-semibold text-neutral-200">
-                {props.path?.name ?? "Unknown path"}
-            </span>
-        </div>
-        <Show
-            when={props.runes.length > 0}
-            fallback={
-                <div class="rounded border border-dashed border-neutral-800 px-2 py-2 text-xs uppercase text-neutral-600">
-                    No selected runes
-                </div>
-            }
-        >
-            <div class="grid grid-cols-1 gap-1.5">
-                <For each={props.runes}>
-                    {(rune, index) => (
-                        <RuneMetricRow
-                            badge={
-                                props.label === "Primary" && index() === 0
-                                    ? "Keystone"
-                                    : undefined
-                            }
-                            entry={rune.entry}
-                            name={rune.name}
-                        />
-                    )}
-                </For>
-            </div>
-        </Show>
-    </div>
-);
-
-const SelectedStatShardSummary: Component<{
-    rows: SelectedShardMetric[];
-}> = (props) => (
-    <div class="min-w-0 rounded-md border border-neutral-800 bg-neutral-900/35 p-2">
-        <div class="mb-2 text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-            Stat shards
-        </div>
-        <Show
-            when={props.rows.length > 0}
-            fallback={
-                <div class="rounded border border-dashed border-neutral-800 px-2 py-2 text-xs uppercase text-neutral-600">
-                    No selected shards
-                </div>
-            }
-        >
-            <div class="grid grid-cols-1 gap-1.5">
-                <For each={props.rows}>
-                    {(row) => (
-                        <RuneMetricRow
-                            badge={SHARD_SLOT_LABELS[row.slot]}
-                            entry={row.entry}
-                            name={row.shard.name}
-                        />
-                    )}
-                </For>
-            </div>
-        </Show>
-    </div>
-);
-
-const RuneMetricRow: Component<{
-    badge: string | undefined;
-    entry: LolmixRecommendationEntry | undefined;
-    name: string;
-}> = (props) => (
-    <div
-        class="min-w-0 rounded border border-neutral-800 bg-neutral-950/40 px-2 py-1.5"
-        title={props.name}
-    >
-        <div class="flex min-w-0 items-start justify-between gap-2">
-            <div class="min-w-0">
-                <div class="truncate text-xs font-semibold leading-tight text-neutral-100">
-                    {props.name}
-                </div>
-                <Show when={props.badge}>
-                    {(badge) => (
-                        <div class="mt-0.5 text-[10px] uppercase text-neutral-500">
-                            {badge()}
-                        </div>
-                    )}
-                </Show>
-            </div>
-            <Show
-                when={props.entry}
-                fallback={
-                    <span class="shrink-0 text-[10px] uppercase text-neutral-600">
-                        No metric
-                    </span>
-                }
-            >
-                {(entry) => (
-                    <span
-                        class={cn(
-                            "shrink-0 text-xs font-semibold uppercase tabular-nums",
-                            lolmixWinrateTextClass(
-                                entry().context_wr ?? entry().combined_wr,
-                            ),
-                        )}
-                    >
-                        WR{" "}
-                        {formatLolmixPercent(
-                            entry().context_wr ?? entry().combined_wr,
-                        )}
-                    </span>
-                )}
-            </Show>
-        </div>
-        <Show when={props.entry}>
-            {(entry) => (
-                <div class="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[10px] uppercase text-neutral-500">
-                    <span>
-                        PR{" "}
-                        {formatLolmixPercent(
-                            entry().context_pr ?? entry().combined_pr,
-                        )}
-                    </span>
-                    <Show when={entry().context_delta !== undefined}>
-                        <span
-                            class={lolmixScoreClass(entry().context_delta ?? 0)}
-                        >
-                            Δ{" "}
-                            {formatLolmixSignedPercent(
-                                entry().context_delta ?? 0,
-                            )}
-                        </span>
-                    </Show>
-                    <span>
-                        N {formatLolmixCompactCount(entry().total_n_max)}
-                    </span>
-                </div>
-            )}
-        </Show>
-    </div>
-);
-
 const EntryBadge: Component<{ item: LolmixDisplayEntry }> = (props) => (
     <Show when={props.item.recommended || props.item.rare}>
         <span
@@ -2365,70 +2048,4 @@ function scoreColor(value: number) {
     if (value > -0.005) return "#fafafa";
     if (value > -0.03) return "#fcb1b2";
     return "#ff4e50";
-}
-
-function entryMap(entries: LolmixRecommendationEntry[]) {
-    return new Map(entries.map((entry) => [entry.id, entry]));
-}
-
-function selectedRuneMetrics(
-    dataset: Dataset,
-    ids: number[],
-    entryForId: (id: number) => LolmixRecommendationEntry | undefined,
-) {
-    return ids.map((id) => ({
-        id,
-        name: dataset.runeData[id]?.name ?? entryForId(id)?.name ?? String(id),
-        entry: entryForId(id),
-    }));
-}
-
-function runePathByIndex(
-    dataset: Dataset,
-    pathIndex: number | undefined,
-): RunePathRecord | undefined {
-    if (pathIndex === undefined) return undefined;
-
-    const knownPathId = RUNE_PATH_ORDER[pathIndex];
-    if (knownPathId !== undefined) return dataset.runePathData[knownPathId];
-
-    return (
-        dataset.runePathData[pathIndex] ??
-        Object.values(dataset.runePathData)
-            .sort((left, right) => left.id - right.id)
-            .at(pathIndex)
-    );
-}
-
-function statShardOptions(dataset: Dataset, slot: number) {
-    return Object.values(dataset.statShardData)
-        .map((shard) => ({
-            shard,
-            position: shard.positions.find(
-                (position) => position.slot === slot,
-            ),
-        }))
-        .filter(
-            (
-                option,
-            ): option is {
-                shard: StatShardRecord;
-                position: { slot: number; index: number };
-            } => !!option.position,
-        )
-        .sort((left, right) => left.position.index - right.position.index)
-        .map((option) => option.shard);
-}
-
-function statShardEntry(
-    entries: LolmixRecommendationEntry[],
-    slot: number,
-    shardName: string,
-) {
-    const slotLabel = SHARD_SLOT_LABELS[slot].toLowerCase();
-    const normalizedShardName = shardName.toLowerCase();
-    return entries.find((entry) => {
-        const name = entry.name.toLowerCase();
-        return name.includes(slotLabel) && name.includes(normalizedShardName);
-    });
 }
