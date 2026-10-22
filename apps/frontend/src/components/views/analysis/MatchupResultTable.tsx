@@ -12,6 +12,7 @@ import { Team } from "@draftgap/core/src/models/Team";
 import {
     AnalyzeChampionResult,
     AnalyzeMatchupResult,
+    sumMatchupRatings,
 } from "@draftgap/core/src/draft/analysis";
 import ChampionCell from "../../common/ChampionCell";
 import { RatingText } from "../../common/RatingText";
@@ -42,6 +43,7 @@ export function MatchupResultTable(
         games: number;
         wins: number;
         rating: number;
+        weightedRating: number;
     }>();
 
     const columns: ColumnDef<AnalyzeMatchupResult>[] = [
@@ -83,8 +85,8 @@ export function MatchupResultTable(
                 ),
         },
         {
-            header: "Winrate",
-            accessorFn: (result) => result.rating,
+            header: "Impact",
+            accessorFn: (result) => result.weightedRating,
 
             cell: (info) => (
                 <RatingText
@@ -156,8 +158,8 @@ export function MatchupResultTable(
         },
         {
             id: "opponent-winrate",
-            header: "Winrate",
-            accessorFn: (result) => -result.rating,
+            header: "Impact",
+            accessorFn: (result) => -result.weightedRating,
             cell: (info) => (
                 <RatingText
                     rating={info.getValue<number>()}
@@ -174,6 +176,7 @@ export function MatchupResultTable(
                     setChosenResult({
                         ...info.row.original,
                         rating: -info.row.original.rating,
+                        weightedRating: -info.row.original.weightedRating,
                         wins: info.row.original.games - info.row.original.wins,
                     });
                     setConfidenceAnalysisModalIsOpen(true);
@@ -183,10 +186,7 @@ export function MatchupResultTable(
     ];
 
     const allyRating = () =>
-        table
-            .getRowModel()
-            .rows.map((r) => r.original.rating)
-            .reduce((a, b) => a + b, 0);
+        sumMatchupRatings(table.getRowModel().rows.map((r) => r.original));
     const opponentRating = () => -allyRating();
 
     const [sorting, setSorting] = createSignal<SortingState>([]);
@@ -205,7 +205,9 @@ export function MatchupResultTable(
                 data = data.filter((m) => m.roleA === m.roleB);
             }
 
-            return data.sort((a, b) => a.roleA - b.roleA || a.roleB - b.roleB);
+            return [...data].sort(
+                (a, b) => a.roleA - b.roleA || a.roleB - b.roleB,
+            );
         },
         columns,
         state: {
