@@ -14,6 +14,7 @@ import {
     AnalyzeChampionResult,
     AnalyzeDuoResult,
     AnalyzeMatchupResult,
+    sumMatchupRatings,
 } from "@draftgap/core/src/draft/analysis";
 import ChampionCell from "../../common/ChampionCell";
 import { RatingText } from "../../common/RatingText";
@@ -210,10 +211,7 @@ export const TotalChampionContributionTable: Component<Props> = (_props) => {
                     allyMatchupResultsByChampionKey.get(championKey) ?? [];
 
                 const baseRating = allyChampionResult?.rating ?? 0;
-                const matchupRating = matchupResults.reduce(
-                    (acc, result) => acc + result.rating,
-                    0,
-                );
+                const matchupRating = sumMatchupRatings(matchupResults);
                 const duoRating = allyDuoResults.reduce(
                     (acc, result) => acc + result.rating / 2,
                     0,
