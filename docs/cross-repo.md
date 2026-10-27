@@ -74,6 +74,41 @@ after forced shutdown; these are not running services.
 For desktop development, `bun run --bun tauri dev` works from the root. Native builds
 also need Rust and platform prerequisites; keep them separate from web checks.
 
+## Windows desktop LoLMix lifecycle
+
+Opening DraftGap automatically starts LoLMix for `127.0.0.1` or `localhost`
+using the port in Settings (default `8765`). The connection waits for startup
+and verifies the HTTP health/schema. Retry reports startup errors and can retry
+after they are fixed. Remote hosts and other platforms still use an external server.
+
+Run `setup:all` once to prepare the sibling LoLMix checkout and its `.venv`.
+The EXE runs that environment's Python directly, without a terminal, `uv`,
+dependency installation, or a package-runner process. LoLMix remains a separate
+checkout; Python and its dependencies are not bundled into the EXE. Discovery
+uses `LOLMIX_REPO` if set (an absolute path), a `lolmix` sibling beside/above the
+EXE, then the build-time sibling checkout for a copied local EXE.
+
+Only one DraftGap instance runs; opening the EXE again focuses the existing
+window. Native startup requests are serialized, and obsolete queued settings
+are discarded before they can change the server. An already-running compatible
+server is reused and remains externally owned: DraftGap never stops it. An
+occupied port with an incompatible service produces an error instead of spawning.
+
+Each owned server tree is placed in a Windows Job Object **during process
+creation**, including the Windows Python venv launcher and any descendants.
+On close/restart, EOF asks LoLMix to shut down; after a bounded grace period,
+the job is terminated and its processes are awaited. Windows also kills the
+job on a DraftGap crash/forced termination. Changing the host or port stops the
+previous owned server before starting another. Logs go to `lolmix-server.log`
+in Tauri's app log directory; startup errors show the full path.
+
+Native regression tests: `cargo test --manifest-path apps/frontend/src-tauri/Cargo.toml`.
+These require the prepared LoLMix `.venv` on Windows, use synthetic catalog
+data, and exercise real process/HTTP cleanup without live League or Lolalytics.
+Also run `check:all`, rebuild the EXE and verify open, duplicate open, close,
+reopen and forced termination on Windows. Native checks are separate from the
+portable cloud checks.
+
 ## Codex Cloud environment
 
 ### Reproducible bootstrap for the combined saved environment

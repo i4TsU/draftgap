@@ -13,12 +13,12 @@ import type {
 } from "../api/lolmix-api";
 import {
     buildLolmixAnalyzeRequest,
-    checkLolmixConnection,
     fetchLolmixRecommendations,
     lolmixAnalyzeEndpoint,
     lolmixServerConfig,
     notConfiguredLolmixConnectionState,
 } from "../api/lolmix-api";
+import { createLolmixConnectionQuery } from "../api/lolmix-desktop";
 import { useBuild } from "./BuildContext";
 import { useDataset } from "./DatasetContext";
 import { useDraft } from "./DraftContext";
@@ -59,6 +59,8 @@ export function createLolmixContext() {
     const serverConfig = createMemo(() =>
         lolmixServerConfig(config.lolmixServerHost, config.lolmixServerPort),
     );
+    const selectConnection = createLolmixConnectionQuery();
+    const connection = createMemo(() => selectConnection(serverConfig()));
     const endpoint = () =>
         lolmixAnalyzeEndpoint(serverConfig().host, serverConfig().port);
     const request = createMemo(() =>
@@ -73,26 +75,14 @@ export function createLolmixContext() {
         }),
     );
 
-    const connectionQuery = createQuery(() => {
-        const currentConfig = serverConfig();
-
-        return {
-            queryKey: [
-                "lolmix-connection",
-                currentConfig.host,
-                currentConfig.port,
-            ],
-            queryFn: () => checkLolmixConnection(currentConfig),
-            get enabled() {
-                return currentConfig.host.length > 0;
-            },
-            refetchInterval: false,
-            refetchOnMount: true,
-            refetchOnWindowFocus: false,
-            refetchOnReconnect: false,
-            retry: false,
-        };
-    });
+    const connectionQuery = createQuery(() => ({
+        ...connection(),
+        refetchInterval: false,
+        refetchOnMount: true,
+        refetchOnWindowFocus: false,
+        refetchOnReconnect: false,
+        retry: false,
+    }));
 
     const connectionState = createMemo<LolmixConnectionState>(() => {
         const currentConfig = serverConfig();

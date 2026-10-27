@@ -9,10 +9,11 @@ from lolmix import server
 
 
 def main() -> None:
-    httpd = server.create_server("127.0.0.1", 8765)
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    httpd = server.create_server("127.0.0.1", port)
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
     thread.start()
-    print("LoLMix listening on http://127.0.0.1:8765", flush=True)
+    print(f"LoLMix listening on http://127.0.0.1:{port}", flush=True)
     try:
         sys.stdin.readline()
     except KeyboardInterrupt:
