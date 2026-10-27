@@ -13,12 +13,12 @@ import type {
 } from "../api/lolmix-api";
 import {
     buildLolmixAnalyzeRequest,
-    checkLolmixConnection,
     fetchLolmixRecommendations,
     lolmixAnalyzeEndpoint,
     lolmixServerConfig,
     notConfiguredLolmixConnectionState,
 } from "../api/lolmix-api";
+import { connectLolmix } from "../api/lolmix-desktop";
 import { useBuild } from "./BuildContext";
 import { useDataset } from "./DatasetContext";
 import { useDraft } from "./DraftContext";
@@ -82,10 +82,7 @@ export function createLolmixContext() {
                 currentConfig.host,
                 currentConfig.port,
             ],
-            queryFn: () => checkLolmixConnection(currentConfig),
-            get enabled() {
-                return currentConfig.host.length > 0;
-            },
+            queryFn: () => connectLolmix(currentConfig),
             refetchInterval: false,
             refetchOnMount: true,
             refetchOnWindowFocus: false,
