@@ -56,7 +56,7 @@ export const LolmixConnectionPanel: Component<Props> = (props) => {
                 </Match>
                 <Match when={props.state.status === "checking"}>
                     <p class="text-neutral-500 uppercase">
-                        Checking lolmix-server...
+                        Connecting to LoLMix...
                     </p>
                 </Match>
                 <Match when={props.state.status === "connected"}>
@@ -91,7 +91,7 @@ export const LolmixConnectionPanel: Component<Props> = (props) => {
                 </Match>
                 <Match when={props.state.status === "error"}>
                     <p class="text-red-300 uppercase">
-                        lolmix-server responded, but DraftGap could not use it:{" "}
+                        DraftGap could not connect to LoLMix:{" "}
                         {errorMessage(props.state)}
                     </p>
                 </Match>

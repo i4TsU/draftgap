@@ -9,7 +9,13 @@ use std::time::Duration;
 use reqwest::{Client, Url};
 use serde::Serialize;
 use serde_json::Value;
+use std::sync::Arc;
 use tauri::async_runtime::Mutex;
+use tauri::Manager;
+
+mod lolmix;
+#[cfg(windows)]
+mod owned_process;
 
 struct AppState {
     lcu_data: Mutex<Option<LcuData>>,
@@ -277,6 +283,18 @@ async fn get_pickable_champion_ids(state: tauri::State<'_, AppState>) -> Result<
     get_lcu_response(&state, "lol-champ-select/v1/pickable-champion-ids").await
 }
 
+#[tauri::command]
+async fn ensure_lolmix_server(
+    state: tauri::State<'_, Arc<lolmix::Service>>,
+    host: String,
+    port: u16,
+) -> Result<(), String> {
+    let service = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || service.ensure(&host, port))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn main() {
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
@@ -289,18 +307,41 @@ fn main() {
     };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
+        .setup(|app| {
+            let log = app.path().app_log_dir()?.join("lolmix-server.log");
+            app.manage(Arc::new(lolmix::Service::new(log)));
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            ensure_lolmix_server,
             fetch_lolalytics_page,
             get_champ_select_session,
             get_current_summoner,
             get_grid_champions,
             get_pickable_champion_ids
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                if let Some(service) = app.try_state::<Arc<lolmix::Service>>() {
+                    service.stop();
+                }
+            }
+        });
 }
