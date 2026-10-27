@@ -89,7 +89,8 @@ uses `LOLMIX_REPO` if set (an absolute path), a `lolmix` sibling beside/above th
 EXE, then the build-time sibling checkout for a copied local EXE.
 
 Only one DraftGap instance runs; opening the EXE again focuses the existing
-window. Native startup requests are serialized. An already-running compatible
+window. Native startup requests are serialized, and obsolete queued settings
+are discarded before they can change the server. An already-running compatible
 server is reused and remains externally owned: DraftGap never stops it. An
 occupied port with an incompatible service produces an error instead of spawning.
 
